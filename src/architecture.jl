@@ -45,6 +45,7 @@ struct Architecture{T,L,M<:MutationSampler}
     xs   :: Vector{T}   # map locations
     mut  :: M
 end
+Base.length(arch::Architecture) = length(arch.loci)
 
 Architecture(loci, xs) = Architecture(loci, xs, PoissonMutationSampler(loci))
 

@@ -4,7 +4,10 @@ abstract type RecombinationMap end
 # for unlinked loci automatically, but not sure how to sample breakpoints
 # efficiently in general.
 
-struct LinearMap{T}
+struct Unlinked <: RecombinationMap end
+maplength(m::Unlinked) = Inf
+
+struct LinearMap{T} <: RecombinationMap
     maplength :: T  # maplength in Morgans, i.e. expected # of crossovers
 end
 
@@ -57,6 +60,15 @@ function recombine!(z, breakpoints, x, y, xs)
     return z
 end
 
-# 
+function recombination!(target, rng, recmap, x1, x2, arch)
+    breakpoints = rand_breakpoints(rng, recmap)
+    recombine!(target, breakpoints, x1, x2, arch.xs)
+end
+
+function recombination!(target, rng, recmap::Unlinked, x1, x2, _)
+    for i in 1:length(target)
+        target[i] = rand(rng) < 0.5 ? x1[i] : x2[i] 
+    end
+end
 
 

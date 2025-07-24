@@ -22,7 +22,7 @@ export LinearMap, maplength, rand_breakpoints
 include("haploids.jl")
 export HaploidWFPopulation, HaploidFixedPopulation, MainlandIsland
 export HaploidHWLEPopulation
-export generation!
+export generation!, allele_freqs
 
 include("simulation.jl")
 export simulate!

@@ -9,6 +9,9 @@ end
 struct HaploidFixedPopulation{T} <: Population
     genotype :: T
 end
+nloci(m::HaploidFixedPopulation) = length(m.genotype)
+
+generation!(_, pop::HaploidFixedPopulation) = pop
 
 function rand_migrant!(_::AbstractRNG, x, m::HaploidFixedPopulation) 
     x .= copy(m.genotype)
@@ -17,22 +20,32 @@ end
 struct HaploidHWLEPopulation{T} <: Population
     p :: T
 end
+nloci(m::HaploidHWLEPopulation) = length(m.p)
+
+generation!(_, pop::HaploidHWLEPopulation) = pop
 
 function rand_migrant!(rng::AbstractRNG, x, m::HaploidHWLEPopulation) 
     x .= rand(rng, length(x)) .< m.p
 end
 
-function rand_migrant(rng::AbstractRNG, m::HaploidHWLEPopulation)
-    x = Vector{Bool}(undef, length(m.p))
+function rand_migrant(rng::AbstractRNG, m)
+    x = Vector{Bool}(undef, nloci(m))
     rand_migrant!(rng, x, m)
 end
 
-struct HaploidWFPopulation{T,A,R} <: Population
+struct HaploidWFPopulation{T,A,R<:RecombinationMap} <: Population
     x  :: Vector{T}       
     x_ :: Vector{T}
     N  :: Int64
     arch :: A
     recmap :: R
+end
+nloci(m::HaploidWFPopulation) = length(m.arch)
+
+allele_freqs(pop::HaploidWFPopulation) = sum(pop.x) ./ pop.N 
+
+function rand_migrant!(_::AbstractRNG, x, m::HaploidWFPopulation) 
+    x .= copy(rand(m.x))
 end
 
 HaploidWFPopulation(x, arch, recmap) = 
@@ -44,6 +57,7 @@ function generation!(rng::AbstractRNG,
     @unpack mainland, island, m = metapop
     migration!(rng, island, mainland, m)
     island = generation!(rng, island)
+    mainland = generation!(rng, mainland)
     return MainlandIsland(island, mainland, m)
 end
 
@@ -62,12 +76,11 @@ function generation!(rng::AbstractRNG,
     @unpack N, x, x_, arch, recmap = pop
     w   = map(xi->fitness(arch, xi), x)
     idx = sample(rng, 1:N, Weights(w), 2N)
-    @inbounds for k=1:N
+    @inbounds Threads.@threads for k=1:N
         i = idx[k]    # parent 1 index
         j = idx[N+k]  # parent 2 index
         # recombination
-        breakpoints = rand_breakpoints(rng, recmap)
-        recombine!(x_[k], breakpoints, x[i], x[j], arch.xs)
+        recombination!(x_[k], rng, recmap, x[i], x[j], arch)
         # mutation
         mutations = rand_mutations(rng, arch.mut) 
         mutation!(x_[k], mutations)
