@@ -27,7 +27,7 @@ function rand_breakpoints(rng, m::LinearMap)
     L = maplength(m)
     n = rand(rng, Poisson(L))
     bps = rand(rng, n) .* L
-    sort!(bps)
+    [sort!(bps) ; L]
 end
 
 # `recombine!` is a general function, different sorts of genetic map should
