@@ -1,9 +1,3 @@
-
-struct Node{T}
-    id   :: T
-    time :: Int64
-end
-
 struct Edge{T,V}
     parent :: T
     child  :: T
@@ -16,21 +10,43 @@ function Base.show(io::IO, e::Edge)
     write(io, s)
 end
 
-struct TreeSequence{T,V}
-    nodes :: Vector{Node{T}}
-    edges :: Vector{Edge{T,V}}
-    L :: V 
+struct TreeSequence{T<:Integer,V<:Real,W<:Real}
+    nodes :: Vector{W}             # stores birth times 
+    edges :: Vector{Edge{T,V}}     # inheritance edges 
+    children :: Vector{Vector{T}}  # for each node, IDs of edges to children
+    L :: V                         # chromosome length
+    forward :: Bool
 end
 
-function addnode!(nodes, time)
-    n = length(nodes)
-    push!(nodes, Node(n+1, time))
-    n + 1
+function init_ts(N::Int, L::V; forward=true) where V
+    TreeSequence(zeros(Int, N), Edge{Int,V}[], [Int[] for _=1:N], L, forward) 
 end
 
-Diploid{T} = Tuple{Node{T},Node{T}}
-Haploid{T} = Node{T}
+function Base.show(io::IO, ts::TreeSequence)
+    s = "TreeSequence(nv=$(length(ts.nodes)), ne=$(length(ts.edges)), L=$(ts.L))"
+    write(io, s)
+end
 
+function addnode!(nodes, children::Vector{Vector{T}}, time) where T
+    push!(nodes, time)
+    push!(children, T[]) 
+    return length(nodes)
+end
+
+function addnodes!(ts::TreeSequence{T}, N, t) where T
+    for _=1:N
+        addnode!(ts.nodes, ts.children, t)
+    end
+end
+
+function addedge!(edges, children, edge)
+    push!(edges, edge)
+    n = length(edges)
+    push!(children[edge.parent], n) 
+    return n
+end
+
+# For simplification algorithm
 struct Segment{T,V}
     node :: T
     left :: V
@@ -39,26 +55,29 @@ end
 
 Base.isless(x::Segment, y::Segment) = x.left < y.left
 
-function simplify(ts::TreeSequence{T,V}, smpl::Vector{Node{T}}) where {T,V}
-    @unpack nodes, edges, L = ts
-    nnodes = Node{T}[]
+function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
+    @unpack nodes, edges, children, L, forward = ts
+    #@assert !forward
+    nnodes = W[]
+    nchildren = Vector{T}[]
     nedges = Edge{T,V}[]
     A = [Segment{T,V}[] for _=1:length(nodes)]
     Q = MutableBinaryMinHeap{Segment{T,V}}()
     for u in smpl
-        v = addnode!(nnodes, u.time)
-        A[u.id] = [Segment(v, 0.0, L)]
+        v = addnode!(nnodes, nchildren, nodes[u])
+        A[u] = [Segment(v, 0.0, L)]
     end
     # now nnodes consists of the sample nodes, ordered by their new id's
     # A contains at the index of the old id's the associated active
     # segments (i.e. full genome)
-    for u in sort(nodes, by=x->x.time)  # for each node in the original ts XXX sorted from present to past
+    nn = length(nodes)
+    order = forward ? reverse(1:nn) : (1:nn)
+    for u in order  # for each node in the original ts, from present to past
         # get the edges of which u is a parent node
-        # XXX this would be much faster if one had an actual graph data
-        # structure?
-        uedges = filter(x->x.parent == u.id, edges)   # S2
+        uedges = children[u]  #filter(x->x.parent == u.id, edges)   # S2
         v = -1
-        for e in uedges  # S3
+        for k in uedges  # S3
+            e = edges[k]
             for x in A[e.child]
                 if x.rght > e.left && e.rght > x.left
                     # we found a segment of e.child overlapping with the
@@ -90,7 +109,7 @@ function simplify(ts::TreeSequence{T,V}, smpl::Vector{Node{T}}) where {T,V}
                 end
             else  #  S6, there's overlap, new output node
                 if v == -1
-                    v = addnode!(nnodes, u.time)
+                    v = addnode!(nnodes, nchildren, nodes[u])
                 end
                 # S7 record edges
                 α = Segment(v, l, r)
@@ -102,7 +121,7 @@ function simplify(ts::TreeSequence{T,V}, smpl::Vector{Node{T}}) where {T,V}
                     end
                 end
             end
-            push!(A[u.id], α)
+            push!(A[u], α)
         end
     end
     sort!(nedges, by=x->(x.parent, x.child, x.rght, x.left))
@@ -115,49 +134,31 @@ function simplify(ts::TreeSequence{T,V}, smpl::Vector{Node{T}}) where {T,V}
                 ei.parent != ej.parent || 
                 ei.child != ej.child)
             ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
-            push!(nnedges, ek)
+            addedge!(nnedges, nchildren, ek)
             start = j
         end
     end
-    ei = last(nedges)
-    ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
-    TreeSequence(nnodes, nnedges, L)
-end
-
-function recombine(rng, p1, p2, c, recmap::RecombinationMap)
-    bps = rand_breakpoints(rng, recmap)
-    map(enumerate(bps)) do (i,x1)
-        x0 = i == 1 ? zero(x1) : bps[i-1]
-        isodd(i) ? Edge(p1.id, c.id, x0, x1) : Edge(p2.id, c.id, x0, x1)
+    if length(nedges) > 0 
+        ei = last(nedges)
+        ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
+        addedge!(nnedges, nchildren, ek)
     end
-end
-
-# neutral WF
-function generation!(rng, pop, ts::TreeSequence, recmap)
-    @unpack nodes, edges, L = ts
-    k = length(ts.nodes) 
-    N = length(pop)
-    t = pop[1][1].time + 1
-    pop′ = [(Node(k+i,t), Node(N+k+i,t)) for i=1:N]
-    for k=1:N
-        # choose parent for first haplotype
-        i = rand(rng, 1:N)
-        eik = recombine(rng, pop[i]..., pop′[k][1], recmap) 
-        # choose parent for the second haplotype
-        j = rand(rng, 1:N)
-        ejk = recombine(rng, pop[j]..., pop′[k][2], recmap) 
-        edges = vcat(edges, eik, ejk)
+    if forward
+        maxt = maximum(nnodes)
+        sts = reverse_relabel(TreeSequence(nnodes, nnedges, nchildren, L, false))
+        sts.nodes .= maxt .- sts.nodes
+    else
+        sts = TreeSequence(nnodes, nnedges, nchildren, L, false)
     end
-    nodes = vcat(nodes, first.(pop′), last.(pop′))
-    pop′, TreeSequence(nodes, edges, L)
+    return sts
 end
 
 function to_tskit(ts::TreeSequence)
-    @unpack nodes, edges, L = ts
+    @unpack nodes, edges, L, forward = ts
+    @assert !forward
     tbc = tskit.TableCollection(L)
-    sort!(edges, by=x->(x.parent, x.child))
-    for n in nodes
-        tbc.nodes.add_row(time=n.time, flags=n.time==0 ? 1 : 0)
+    for t in nodes
+        tbc.nodes.add_row(time=t, flags= t==0 ? 1 : 0)
     end
     for e in edges
         tbc.edges.add_row(e.left, e.rght, e.parent-1, e.child-1)
@@ -167,26 +168,75 @@ function to_tskit(ts::TreeSequence)
     tbc.tree_sequence()
 end
 
-function reverse_time(ts::TreeSequence)
-    @unpack nodes, edges, L = ts
-    T = maximum(x->x.time, nodes)
-    n = [Node(n.id, T-n.time) for n in nodes]
-    TreeSequence(n, edges, L)
+# nodes stay the same, edges do not change internally either, only the edge
+# index and hence `children`
+function sort_edges(ts::TreeSequence)
+    e, c = sort_edges(ts.edges, ts.children)
+    reconstruct(ts, edges=e, children=c)
+end
+
+function sort_edges(edges, children)
+    o = sortperm(edges, by=x->(x.parent, x.child, x.left, x.rght))
+    i = invperm(o)
+    nchildren = map(children) do xs
+        [i[x] for x in xs]
+    end
+    edges[o], nchildren 
 end
 
 function reverse_relabel(ts::TreeSequence)
     # assumes currently sorted from past to present, and that present is
     # maximum T, will yield the reverse: i.e. sorted from present to past,
     # with the present being t=0
-    @unpack nodes, edges, L = ts
-    T = nodes[end].time
+    @unpack nodes, edges, children, L, forward = ts
+    T = forward ? nodes[end] : nodes[1]
     n = length(nodes)
-    nnodes = [Node(k, T-node.time) for (k,node) in enumerate(reverse(nodes))]
     nedges = map(edges) do e
         Edge(n - (e.parent-1), n - (e.child-1), e.left, e.rght)
     end
-    sort!(nedges, by=x->(x.parent, x.child, x.left, x.rght))
-    TreeSequence(nnodes, nedges, L)
+    e, c = sort_edges(nedges, children)
+    TreeSequence(reverse(T .- nodes), e, reverse(c), L, !forward)
 end
 
+struct TreeSequenceRecorder{TS<:TreeSequence,V<:AbstractVector}
+    active :: V  # nodes associated with the currently 'active' population
+    ts :: TS
+end
+
+
+# neutral WF -----------------------------------------------------------
+# pop is a collection of node IDs, where index k and N+k give the two
+# haplotypes in individual k
+function generation!(rng, pop, ts::TreeSequence{T}, recmap) where T
+    @unpack nodes, edges, children, L = ts
+    n = length(ts.nodes) 
+    N = length(pop)÷2
+    t = nodes[pop[1]] + 1
+    pop′ = [n+i for i=1:2N]
+    for k=1:N
+        # choose parent for first haplotype
+        i = rand(rng, 1:N)
+        eik = _recombine(rng, pop[i], pop[N+i], pop′[k], recmap) 
+        for e in eik
+            addedge!(edges, children, e)
+        end
+        # choose parent for the second haplotype
+        j = rand(rng, 1:N)
+        ejk = _recombine(rng, pop[j], pop[N+j], pop′[N+k], recmap) 
+        for e in ejk
+            addedge!(edges, children, e)
+        end
+    end
+    nodes = vcat(nodes, fill(t,2N))
+    children = vcat(children, [T[] for _=1:2N])
+    pop′, TreeSequence(nodes, edges, children, L, true)
+end
+
+function _recombine(rng, p1, p2, c, recmap::RecombinationMap)
+    bps = rand_breakpoints(rng, recmap)
+    map(enumerate(bps)) do (i,x1)
+        x0 = i == 1 ? zero(x1) : bps[i-1]
+        isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
+    end
+end
 

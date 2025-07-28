@@ -40,18 +40,23 @@ end
 fitnesseffect(l::PoissonLocus, x) = x*l.s
 fitnesseffect(l::PoissonLocus, x, y) = (x+y)*l.s  # diploid case
 
-struct Architecture{T,L,M<:MutationSampler}
+struct Architecture{L,V<:AbstractVector,M<:MutationSampler}
     loci :: Vector{L}  # loci
-    xs   :: Vector{T}   # map locations
+    xs   :: V  # map locations
     mut  :: M
 end
 Base.length(arch::Architecture) = length(arch.loci)
 
 Architecture(loci, xs) = Architecture(loci, xs, PoissonMutationSampler(loci))
 
-logfitness(a::Architecture, x) = logfitness(a.loci, x)
+logfitness(a::Architecture, args...) = logfitness(a.loci, args...)
+
 function logfitness(a::Vector{L}, x) where L
     mapreduce(i->fitnesseffect(a[i], x[i]), +, 1:length(x)) 
+end
+
+function logfitness(a::Vector{L}, x, y) where L
+    mapreduce(i->fitnesseffect(a[i], x[i], y[i]), +, 1:length(x)) 
 end
 
 fitness = exp ∘ logfitness

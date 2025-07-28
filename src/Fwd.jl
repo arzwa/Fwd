@@ -26,6 +26,7 @@ include("recombination.jl")
 export LinearMap, maplength, rand_breakpoints
 
 include("ts.jl")
+include("diploids.jl")
 
 #include("haploids.jl")
 #export HaploidWFPopulation, HaploidFixedPopulation, MainlandIsland
