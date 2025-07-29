@@ -15,8 +15,6 @@ end
 const Gb = 1_000_000_000
 const Mb = 1_000_000
 const kb = 1_000
-
-
 export Gb, Mb, kb
 
 include("architecture.jl")
@@ -27,6 +25,7 @@ export LinearMap, maplength, rand_breakpoints
 
 include("ts.jl")
 include("diploids.jl")
+include("utils.jl")
 
 #include("haploids.jl")
 #export HaploidWFPopulation, HaploidFixedPopulation, MainlandIsland

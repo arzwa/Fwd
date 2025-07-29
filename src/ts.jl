@@ -6,25 +6,39 @@ struct Edge{T,V}
 end
 
 function Base.show(io::IO, e::Edge)
-    s = @sprintf "Edge(%d, %d, %.2f, %.2f)" e.parent e.child e.left e.rght
-    write(io, s)
+    @unpack parent, child, left, rght = e
+    write(io, @sprintf("Edge(%d, %d, %.2f, %.2f)", 
+        parent, child, left, rght))
 end
 
 struct TreeSequence{T<:Integer,V<:Real,W<:Real}
-    nodes :: Vector{W}             # stores birth times 
-    edges :: Vector{Edge{T,V}}     # inheritance edges 
+    nodes    :: Vector{W}          # stores birth times 
+    edges    :: Vector{Edge{T,V}}  # inheritance edges 
     children :: Vector{Vector{T}}  # for each node, IDs of edges to children
-    L :: V                         # chromosome length
-    forward :: Bool
+    L        :: V                  # chromosome length
+    forward  :: Bool               # forward or backward ts?
+end
+
+function youngest(ts::TreeSequence) 
+    a, b = extrema(ts.nodes)
+    xs = ts.forward ? 
+        (findfirst(x->x==b, ts.nodes):length(ts.nodes)) : 
+        (1:findlast(x->x==a, ts.nodes))
+    collect(xs)
 end
 
 function init_ts(N::Int, L::V; forward=true) where V
-    TreeSequence(zeros(Int, N), Edge{Int,V}[], [Int[] for _=1:N], L, forward) 
+    nodes = zeros(Int, N)
+    edges = Edge{Int,V}[]
+    children = [Int[] for _=1:N]
+    TreeSequence(nodes, edges, children, L, forward) 
 end
 
 function Base.show(io::IO, ts::TreeSequence)
-    s = "TreeSequence(nv=$(length(ts.nodes)), ne=$(length(ts.edges)), L=$(ts.L))"
-    write(io, s)
+    @unpack nodes, edges, L, forward = ts
+    nv = length(nodes)
+    ne = length(edges)
+    write(io, "TreeSequence(nv=$nv, ne=$ne, L=$L, forward=$forward)")
 end
 
 function addnode!(nodes, children::Vector{Vector{T}}, time) where T
@@ -33,10 +47,12 @@ function addnode!(nodes, children::Vector{Vector{T}}, time) where T
     return length(nodes)
 end
 
-function addnodes!(ts::TreeSequence{T}, N, t) where T
+function addnodes!(ts::TreeSequence, N, t)
+    x = length(ts.nodes)
     for _=1:N
         addnode!(ts.nodes, ts.children, t)
     end
+    return x+1:x+N
 end
 
 function addedge!(edges, children, edge)
@@ -44,6 +60,21 @@ function addedge!(edges, children, edge)
     n = length(edges)
     push!(children[edge.parent], n) 
     return n
+end
+
+function addedges!(ts::TreeSequence, edges)
+    for e in edges
+        addedge!(ts.edges, ts.children, e)
+    end
+end
+
+function recombine(rng, p1, p2, c, recmap::RecombinationMap)
+    bps = rand_breakpoints(rng, recmap)
+    edges = map(enumerate(bps)) do (i,x1)
+        x0 = (i == 1 ? zero(x1) : bps[i-1])
+        isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
+    end
+    bps, edges
 end
 
 # For simplification algorithm
@@ -130,9 +161,9 @@ function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
     for j in 2:length(nedges)
         ei = nedges[j-1]
         ej = nedges[j]
-        if (ei.rght != ej.left || 
-                ei.parent != ej.parent || 
-                ei.child != ej.child)
+        condition = (
+            ei.rght != ej.left || ei.parent != ej.parent || ei.child != ej.child)
+        if condition  # edges must not be merged
             ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
             addedge!(nnedges, nchildren, ek)
             start = j
@@ -168,6 +199,15 @@ function to_tskit(ts::TreeSequence)
     tbc.tree_sequence()
 end
 
+function from_tskit(ts)
+    tabs = ts.tables
+    nodes = map(x->x.time, tabs.nodes)
+    edges = map(x->Edge(x.parent+1, x.child+1, x.left, x.right), tabs.edges)
+    children = [filter(i->edges[i].parent == j, 1:length(edges)) for j=1:length(nodes)]
+    L = ts.sequence_length
+    TreeSequence(nodes, edges, children, L, false)
+end
+
 # nodes stay the same, edges do not change internally either, only the edge
 # index and hence `children`
 function sort_edges(ts::TreeSequence)
@@ -198,11 +238,32 @@ function reverse_relabel(ts::TreeSequence)
     TreeSequence(reverse(T .- nodes), e, reverse(c), L, !forward)
 end
 
-struct TreeSequenceRecorder{TS<:TreeSequence,V<:AbstractVector}
-    active :: V  # nodes associated with the currently 'active' population
-    ts :: TS
+function collect_edges(ts, nodes)
+    es = [filter(x->x.child == n, ts.edges) for n in nodes]
 end
 
+# XXX note that not all leaf nodes will have edges for their full sequence
+# length in a simplified ts when the sample has not fully coalesced...
+function check_edges(ts, nodes)
+    es = collect_edges(ts, nodes)
+    ls = map(ex->sum([x.rght-x.left for x in ex]), es)
+    all(ls .== ts.L)
+end
+
+function check_children(ts)
+    @unpack children, edges = ts
+    map(1:length(children)) do i
+        all([edges[k].parent == i for k in children[i]])
+    end |> all
+end
+
+draw_text(ts) = ts.draw_text()
+function draw_text(ts::TreeSequence)
+    if ts.forward 
+        ts = reverse_relabel(ts)
+    end
+    to_tskit(ts).draw_text()
+end
 
 # neutral WF -----------------------------------------------------------
 # pop is a collection of node IDs, where index k and N+k give the two

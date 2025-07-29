@@ -1,4 +1,4 @@
-using Fwd, Test
+using Fwd, Test, PyCall
 import Fwd: Node, Edge, TreeSequence, LinearMap
 using Random
 rng = Random.default_rng()
@@ -31,9 +31,9 @@ rrts = Fwd.reverse_relabel(rts)
 smpl = [i for i=1:length(ts.nodes) if ts.nodes[i] == ngen]
 ssts = Fwd.simplify(sts, smpl)
 
-smpl = [i for i=1:length(sts.nodes) if sts.nodes[i] == 0][1:50]
+smpl = [i for i=1:length(sts.nodes) if sts.nodes[i] == 0][1:5]
 ssts = Fwd.simplify(rts, smpl)
 tspy = Fwd.to_tskit(ssts)
 tspy.num_trees
-print(tspy.draw_text())
+print(tspy.at(0.05).draw_text())
 

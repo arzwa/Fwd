@@ -45,6 +45,7 @@ haplotype (i.e. a random pick of the two recombinant haplotypes), one should
 randomize the order of the `x` and `y` arguments.
 """
 function recombine!(z, breakpoints, x, y, xs)
+    length(z) == 0 && return
     onx = true
     i   = 1
     for bp in breakpoints

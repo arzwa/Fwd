@@ -1,70 +1,128 @@
 
-struct DiploidWFPopulation{H,A<:Architecture,R<:RecombinationMap}
-    N  :: Int
-    arch :: A
+@with_kw struct DiploidWFPopulation{H,T,A<:Architecture,R<:RecombinationMap}
+    N      :: Int
+    x      :: Vector{H}  # haplotypes
+    _x     :: Vector{H}  = deepcopy(x) 
+    arch   :: A
     recmap :: R 
-    x  :: Vector{H}  # haplotypes
-    x_ :: Vector{H}  
+    nodes  :: Vector{T}  # tree sequence nodes
 end
 
-function generation!(rng::AbstractRNG, 
-        pop::DiploidWFPopulation, 
-        tsrec::TreeSequenceRecorder)
-    @unpack N, x, x_, arch, recmap = pop
-    @unpack active, ts = tsrec
-    # fitness calculation -- XXX could be taken out to have a function that
-    # only deals with reproduction...
+function eval_fitness(pop::DiploidWFPopulation)
+    @unpack N, x, arch = pop
     w = map(i->fitness(arch, x[i], x[N+i]), 1:N)
-    # sample 2N parents
-    idx = sample(rng, 1:N, Weights(w), 2N)
+end
+
+function simplify!(pop::DiploidWFPopulation, ts::TreeSequence)
+    @unpack nodes, N = pop
+    sts = simplify(ts, nodes)
+    nv = length(sts.nodes)
+    pop.nodes .= collect(nv-2N+1:nv)
+    return pop, sts
+end
+
+"""
+`idx` is a vector of length 2N with numbers ∈ [1..N]  where entry `k` and
+entry `N+k` correspond to the indices of the mother and father of offspring
+individual `k`. This means that the maternal haplotypes are at `idx[k]` and
+`N+idx[k]`, and the paternal haplotypes at `idx[N+k]` and `N+idx[N+k]`.
+"""
+function generation!(
+        rng::AbstractRNG,
+        pop::DiploidWFPopulation, 
+        idx::Vector{Int},
+        ts::TreeSequence)
+    @unpack N, x, _x, arch, recmap, nodes = pop
+    @assert length(idx) == 2N
     # new nodes to ts
-    ns = length(ts.nodes)+1:length(ts.nodes)+2N 
+    ns = addnodes!(ts, 2N, ts.nodes[nodes[1]]+1)
     for k=1:N  # offspring individual k
-        for (i, p, o) in [(k, idx[k], ns[k]), (N+k, idx[N+k], ns[N+k])]
-            # `i` is the index of the offspring haplotype we're creating
-            # `p` is the index of the parent individual whose haplotypes we recombine
-            # `o` is the node ID in the tree sequence of the offspring haplotype
-            bps, edges = recombine(rng, active[p], active[N+p], o, recmap)
-            for e in edges
-                addedge!(ts.edges, ts.children, e)
-            end
-            recombine!(x_[i], bps, x[p], x[N+p], arch.xs) 
-            mutations = rand_mutations(rng, arch.mut) 
-            mutation!(x_[i], mutations)
-            # XXX better have mutations at population level, since arch is
-            # population level anyhow?
-        end
+        m = idx[k]
+        f = idx[N+k]
+        om = ns[k]
+        of = ns[N+k]
+        # maternal haplotype
+        (m1, m2) = rand(rng) < 0.5 ? (m, N+m) : (N+m, m)
+        bps, edges = recombine(rng, nodes[m1], nodes[m2], om, recmap)
+        recombine!(_x[k], bps, x[m1], x[m2], arch.xs) 
+        addedges!(ts, edges)
+        mutations = rand_mutations(rng, arch.mut) 
+        mutation!(_x[k], mutations)
+        # paternal haplotype
+        (f1, f2) = rand(rng) < 0.5 ? (f, N+f) : (N+f, f)
+        bps, edges = recombine(rng, nodes[f1], nodes[f2], of, recmap)
+        recombine!(_x[N+k], bps, x[f1], x[f2], arch.xs) 
+        addedges!(ts, edges)
+        mutations = rand_mutations(rng, arch.mut) 
+        mutation!(_x[N+k], mutations)
+        # XXX better have mutations at population level, since arch is
+        # population level anyhow?
     end
-    addnodes!(ts, 2N, ts.nodes[active[1]]+1)
-    tsrec.active .= ns
-    DiploidWFPopulation(N, arch, recmap, x_, x)
+    DiploidWFPopulation(N, _x, x, arch, recmap, collect(ns))
 end
 
-function recombine(rng, p1, p2, c, recmap::RecombinationMap)
-    bps = rand_breakpoints(rng, recmap)
-    edges = map(enumerate(bps)) do (i,x1)
-        x0 = i == 1 ? zero(x1) : bps[i-1]
-        isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
-    end
-    bps, edges
-end
+"""
+    TwoPopOneWay
 
-function TwoPopUni{P,T}
-    m :: T
+Migration is from A to B forward in time. Migration replaces an expected
+proportion `m` of the B population by A individuals, without affecting A.
+"""
+struct TwoPopOneWay{P,T}
+    m    :: T
     popA :: P
     popB :: P
 end
 
-function migration!(rng, metapop::TwoPopUni{P}) where P<:DiploidWFPopulation
-    @unpack N = metapop.B
-    nmig = min(N, rand(rng, Poisson(m*N)))
-    for i=1:nmig
-        rand_migrant!(rng, metapop.popB, metapop.popA, i)
+active_nodes(m::TwoPopOneWay) = [m.popA.nodes ; m.popB.nodes]
+
+"""
+    migration!(rng, metapop)
+
+!!! This migration function implements migration-as-copying, i.e. a
+proportion `m` of the B population is replaced by indviduals from A, but A
+is unaffected.  (biologically this could correspond to sending out asexual
+propagules -- although this is more relevant for haplodiplontic cryptogams
+etc. than for diploids).
+"""
+function migration!(rng, metapop::TwoPopOneWay{P}) where P<:DiploidWFPopulation
+    @unpack popA, popB, m = metapop
+    NB = popB.N
+    NA = popA.N
+    nmig = min(NB, rand(rng, Poisson(m*NB)))
+    idx = sample(rng, 1:NA, nmig) 
+    for k=1:nmig
+        i = idx[k]  # i is the index of the migrant individual in A
+        copy!(popB.x[k]   , popA.x[i]   )
+        copy!(popB.x[NB+k], popA.x[NA+i])
+        popB.nodes[k]    = popA.nodes[i]
+        popB.nodes[NB+k] = popA.nodes[NA+i]
     end
 end
 
-function rand_migrant!(rng, popB, popA, i)
-    k = rand(rng, 1:popA.N)
-    copy!(popB.x[i], popA.x[k])
-    copy!(popB.x[i+N], popA.x[k+N])
+# Other possibilities for migration:
+# 1. as in SLiM, a proportion m of the offspring is replaced by offspring
+# from a pair of individuals from the source population
+# 2. ...
+
+function generation!(rng, metapop::TwoPopOneWay, ts::TreeSequence)
+    migration!(rng, metapop)
+    pops = map([metapop.popA, metapop.popB]) do pop
+        w = eval_fitness(pop)
+        idx = sample(rng, 1:pop.N, Weights(w), 2pop.N)
+        generation!(rng, pop, idx, ts)
+    end
+    reconstruct(metapop, popA=pops[1], popB=pops[2])
 end
+
+function simplify!(pop::TwoPopOneWay, ts::TreeSequence)
+    @unpack popA, popB = pop
+    ns = active_nodes(pop)
+    sts = simplify(ts, ns)
+    nv = length(sts.nodes)
+    nn = length(ns) 
+    popA.nodes .= collect(nv-nn+1:(nv-nn+2popA.N))
+    popB.nodes .= collect((nv-nn+2popA.N+1):nv)
+    return pop, sts
+end
+
+

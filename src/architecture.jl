@@ -13,13 +13,6 @@ end
 
 fitnesseffect(l::HaploidBiLocus, x) = l.s*x
 
-# general ploidy case (multiplicative effects)
-fitnesseffect(l::HaploidBiLocus, args...) = sum(args) * l.s  
-
-function mutation!(x::Vector{Bool}, i::Int) 
-    x[i] = !x[i]
-end
-
 struct DiploidBiLocus{T} <: Locus
     s01 :: T
     s11 :: T
@@ -47,15 +40,20 @@ struct Architecture{L,V<:AbstractVector,M<:MutationSampler}
 end
 Base.length(arch::Architecture) = length(arch.loci)
 
-Architecture(loci, xs) = Architecture(loci, xs, PoissonMutationSampler(loci))
+function Architecture(loci, xs) 
+    @assert length(loci) == length(xs) 
+    Architecture(loci, xs, PoissonMutationSampler(loci))
+end
 
 logfitness(a::Architecture, args...) = logfitness(a.loci, args...)
 
 function logfitness(a::Vector{L}, x) where L
+    length(a) == 0 && return 0.0
     mapreduce(i->fitnesseffect(a[i], x[i]), +, 1:length(x)) 
 end
 
 function logfitness(a::Vector{L}, x, y) where L
+    length(a) == 0 && return 0.0
     mapreduce(i->fitnesseffect(a[i], x[i], y[i]), +, 1:length(x)) 
 end
 
@@ -83,6 +81,10 @@ function mutation!(x::Vector, mutations::Vector{Int})
         mutation!(x, i)
     end
     return x
+end
+
+function mutation!(x::Vector{Bool}, i::Int) 
+    x[i] = !x[i]
 end
 
 
