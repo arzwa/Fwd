@@ -1,3 +1,22 @@
+
+# Interface for an AbstractNode: 
+Base.time(n::AbstractNode) = undefined
+update_time(n::AbstractNode) = undefined
+to_tskit(n::AbstractNode) = undefined
+population(n::AbstractNode) = 0
+
+abstract type AbstractNode end
+
+struct Node{T,V} <: AbstractNode
+    time :: T
+    pop  :: V
+end
+
+Base.time(n::Node) = n.time
+update_time(n::Node{T}, t) where T = Node(t, n.pop)
+to_tskit(n::Node) = (time=n.time, population=n.pop-1)
+population(n::Node) = n.pop
+
 struct Edge{T,V}
     parent :: T
     child  :: T
@@ -11,7 +30,7 @@ function Base.show(io::IO, e::Edge)
         parent, child, left, rght))
 end
 
-struct TreeSequence{T<:Integer,V<:Real,W<:Real}
+struct TreeSequence{T<:Integer,V<:Real,W}
     nodes    :: Vector{W}          # stores birth times 
     edges    :: Vector{Edge{T,V}}  # inheritance edges 
     children :: Vector{Vector{T}}  # for each node, IDs of edges to children
@@ -19,16 +38,10 @@ struct TreeSequence{T<:Integer,V<:Real,W<:Real}
     forward  :: Bool               # forward or backward ts?
 end
 
-function youngest(ts::TreeSequence) 
-    a, b = extrema(ts.nodes)
-    xs = ts.forward ? 
-        (findfirst(x->x==b, ts.nodes):length(ts.nodes)) : 
-        (1:findlast(x->x==a, ts.nodes))
-    collect(xs)
-end
+Base.getindex(ts::TreeSequence, i) = ts.nodes[i]
 
-function init_ts(N::Int, L::V; forward=true) where V
-    nodes = zeros(Int, N)
+function init_ts(N::Int, L::V; forward=true, pop=1) where V
+    nodes = [Node(0, 0) for _=1:N]
     edges = Edge{Int,V}[]
     children = [Int[] for _=1:N]
     TreeSequence(nodes, edges, children, L, forward) 
@@ -41,16 +54,16 @@ function Base.show(io::IO, ts::TreeSequence)
     write(io, "TreeSequence(nv=$nv, ne=$ne, L=$L, forward=$forward)")
 end
 
-function addnode!(nodes, children::Vector{Vector{T}}, time) where T
-    push!(nodes, time)
+function addnode!(nodes, children::Vector{Vector{T}}, node) where T
+    push!(nodes, node)
     push!(children, T[]) 
     return length(nodes)
 end
 
-function addnodes!(ts::TreeSequence, N, t)
+function addnodes!(ts::TreeSequence, N, node)
     x = length(ts.nodes)
     for _=1:N
-        addnode!(ts.nodes, ts.children, t)
+        addnode!(ts.nodes, ts.children, node)
     end
     return x+1:x+N
 end
@@ -89,6 +102,12 @@ Base.isless(x::Segment, y::Segment) = x.left < y.left
 function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
     @unpack nodes, edges, children, L, forward = ts
     #@assert !forward
+    if forward
+        smpl = reverse(smpl)  
+        order = reverse(1:length(nodes))
+    else 
+        order = 1:length(nodes)
+    end
     nnodes = W[]
     nchildren = Vector{T}[]
     nedges = Edge{T,V}[]
@@ -101,13 +120,10 @@ function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
     # now nnodes consists of the sample nodes, ordered by their new id's
     # A contains at the index of the old id's the associated active
     # segments (i.e. full genome)
-    nn = length(nodes)
-    order = forward ? reverse(1:nn) : (1:nn)
     for u in order  # for each node in the original ts, from present to past
         # get the edges of which u is a parent node
-        uedges = children[u]  #filter(x->x.parent == u.id, edges)   # S2
         v = -1
-        for k in uedges  # S3
+        for k in children[u]  # S3
             e = edges[k]
             for x in A[e.child]
                 if x.rght > e.left && e.rght > x.left
@@ -174,22 +190,37 @@ function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
         ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
         addedge!(nnedges, nchildren, ek)
     end
-    if forward
-        maxt = maximum(nnodes)
-        sts = reverse_relabel(TreeSequence(nnodes, nnedges, nchildren, L, false))
-        sts.nodes .= maxt .- sts.nodes
-    else
-        sts = TreeSequence(nnodes, nnedges, nchildren, L, false)
+    # insert input roots...
+    # https://github.com/tskit-dev/tskit/blob/c23aafcfc3bd49bc41955a3f509f50d0fbf4b840/c/tskit/tables.c
+    sts = TreeSequence(nnodes, nnedges, nchildren, L, false)
+    return forward ? reverse_relabel(sts, false) : sts
+end
+
+function reverse_relabel(ts::TreeSequence, update=true)
+    @unpack nodes, edges, children, L, forward = ts
+    n = length(nodes)
+    nedges = map(edges) do e
+        Edge(n - (e.parent-1), n - (e.child-1), e.left, e.rght)
     end
-    return sts
+    e, c = sort_edges(nedges, children)
+    if update
+        T = time(nodes[end])
+        nodes = [update_time(n, T-time(n)) for n in nodes]
+    end
+    TreeSequence(reverse(nodes), e, reverse(c), L, !forward)
 end
 
 function to_tskit(ts::TreeSequence)
     @unpack nodes, edges, L, forward = ts
     @assert !forward
     tbc = tskit.TableCollection(L)
-    for t in nodes
-        tbc.nodes.add_row(time=t, flags= t==0 ? 1 : 0)
+    pops = [-1]  # default
+    for n in nodes
+        tbc.nodes.add_row(; to_tskit(n)..., flags= time(n)==0 ? 1 : 0)
+        if population(n) ∉ pops
+            tbc.populations.add_row()
+            push!(pops, population(n))
+        end
     end
     for e in edges
         tbc.edges.add_row(e.left, e.rght, e.parent-1, e.child-1)
@@ -201,7 +232,7 @@ end
 
 function from_tskit(ts)
     tabs = ts.tables
-    nodes = map(x->x.time, tabs.nodes)
+    nodes = map(x->Node(x.time, x.population), tabs.nodes)
     edges = map(x->Edge(x.parent+1, x.child+1, x.left, x.right), tabs.edges)
     children = [filter(i->edges[i].parent == j, 1:length(edges)) for j=1:length(nodes)]
     L = ts.sequence_length
@@ -224,19 +255,6 @@ function sort_edges(edges, children)
     edges[o], nchildren 
 end
 
-function reverse_relabel(ts::TreeSequence)
-    # assumes currently sorted from past to present, and that present is
-    # maximum T, will yield the reverse: i.e. sorted from present to past,
-    # with the present being t=0
-    @unpack nodes, edges, children, L, forward = ts
-    T = forward ? nodes[end] : nodes[1]
-    n = length(nodes)
-    nedges = map(edges) do e
-        Edge(n - (e.parent-1), n - (e.child-1), e.left, e.rght)
-    end
-    e, c = sort_edges(nedges, children)
-    TreeSequence(reverse(T .- nodes), e, reverse(c), L, !forward)
-end
 
 function collect_edges(ts, nodes)
     es = [filter(x->x.child == n, ts.edges) for n in nodes]

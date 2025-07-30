@@ -1,42 +1,184 @@
+using WrightDistribution
 
-NA = 20
-NB = 10
-L = 2
-C = 0.1
-s = 0.2
-m = 0.1
+function diffdiv(pts)
+    s0 = pts.samples(population=0)
+    s1 = pts.samples(population=1)
+    xs = collect(pts.breakpoints())
+    div = pts.divergence([s0, s1], mode="branch", windows=xs) ./ 2
+    piA = pts.diversity(s0, mode="branch", windows=xs) ./ 2
+    piB = pts.diversity(s1, mode="branch", windows=xs) ./ 2
+    xs[2:end], div, piA, piB
+end
+
+function theights(pts)
+    [[t.time(r) for r in t.roots] for t in pts.trees()][1:end-1]
+end
+
+NA = 100
+NB = 100
+L = 1
+C = 0.5
+s = 0.05
+m = 0.0001
+h = 0.5
+u = 0.001
+xs = collect(C/2L:C/L:C)
+AA = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
+AB = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u  ) for _=1:L], xs)
+R  = LinearMap(C)
+xA = [ones(Bool, L) for _=1:2NA]
+xB = [zeros(Bool, L) for _=1:2NB]
+nA = collect(1:2NA)
+nB = collect(1:2NB) .+ 2NA
+popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
+popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
+mpop = Fwd.TwoPopOneWay(m, popA, popB)
+ts = Fwd.init_ts(mpop, C) 
+rng = Random.seed!(32)
+ngen = 500
+for i=1:500
+    mpop = Fwd.generation!(rng, mpop, ts);
+end
+mpop, sts = Fwd.simplify!(deepcopy(mpop), ts)
+
+pts = to_tskit(reverse_relabel(ts))
+spts = pts.simplify(pts.samples(), keep_input_roots=true)
+
+demography = msprime.Demography.from_tree_sequence(spts)
+demography.populations[1].initial_size=NA
+demography.populations[2].initial_size=NB
+demography.set_migration_rate(1, 0, 0.5)
+cts = msprime.sim_ancestry(
+    demography=demography,
+    initial_state=spts,
+    discrete_genome=false,
+    ploidy=2,
+    random_seed=1)
+
+x, dab, da, db = diffdiv(cts)
+p1 = plot(x, dab, line=:steppre)
+p2 = plot(x, da , line=:steppre)
+p3 = plot(x, db , line=:steppre)
+x, dab, da, db = diffdiv(pts)
+plot!(p1, x, dab, line=:steppre)
+plot!(p2, x, da , line=:steppre)
+plot!(p3, x, db , line=:steppre)
+plot(p1,p2,p3,layout=(1,3), size=(700,200), ylim=(0,5ngen))
+
+theights(pts)
+theights(ppts)
+
+
+
+
+# -----------------------------------------------------------------------
+    
+NA = 100
+NB = 100
+L = 1
+C = 1.0
+s = 0.05
+m = 0.0
 h = 0.5
 u = s*h/200
 xs = collect(C/2L:C/L:C)
 AA = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
 AB = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u  ) for _=1:L], xs)
 R  = LinearMap(C)
-    
-ts = Fwd.init_ts(2NA + 2NB, C) 
 xA = [ones(Bool, L) for _=1:2NA]
 xB = [zeros(Bool, L) for _=1:2NB]
 nA = collect(1:2NA)
 nB = collect(1:2NB) .+ 2NA
-popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=xA, nodes=nA)
-popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=xB, nodes=nB)
+popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
+popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
+ts = Fwd.init_ts(mpop, C) 
+qs  = Vector{Float64}[]
+#mpop = Fwd.generation!(rng, mpop, ts)
+#push!(qs, mean(mpop.popB.x))
 
-rng = Random.seed!(322)
-mpop = Fwd.generation!(rng, mpop, ts)
-Fwd.check_edges(ts, Fwd.active_nodes(mpop))
+rng = Random.seed!(1)
+for i=1:100NB
+    mpop = Fwd.generation!(rng, mpop, ts)
+    push!(qs, mean(mpop.popB.x))
+    if i % NB == 0
+        @info "$i/$(100NB)" 
+        mpop, ts = Fwd.simplify!(mpop, ts)
+    end
+end
+rts = reverse_relabel(ts)
+pts = Fwd.to_tskit(rts)
 
-_popA, tsa = Fwd.simplify!(mpop.popA, ts)
-Fwd.check_edges(tsa, _popA.nodes)
+theights(pts)
 
-mpop, ts = Fwd.simplify!(mpop, ts)
-Fwd.check_edges(ts, Fwd.active_nodes(mpop))
+demography = msprime.Demography.from_tree_sequence(pts)
+demography.populations[1].initial_size=NA
+demography.populations[2].initial_size=NB
+demography.set_migration_rate(1, 0, 0.5)
+
+cts = msprime.sim_ancestry(
+    demography=demography,
+    initial_state=pts,
+    discrete_genome=false,
+    ploidy=1,
+    random_seed=7)
+
+from_tskit(cts).nodes
+
+stephist(vcat(qs...), norm=true)
+d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
+plot!(0:0.001:1, p->pdf(d,1-p))
+
+x, dab, da, db = diffdiv(cts)
+P1 = plot(x, dab, line=:steppre, title="AB", legend=false)
+hline!([1/m + 2NA], label="")
+vline!([AA.xs], color=:black)
+P2 = plot(x, da, line=:steppre, title="A")
+hline!([2NA])
+P3 = plot(x, db, line=:steppre, title="B")
+plot(P1, P2, P3, layout=(1,3), legend=false, size=(900,200))
+
+
+# -------------------------------
+nrep = 1
+res = map(1:nrep) do k
+    popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
+    popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
+    mpop = Fwd.TwoPopOneWay(m, popA, popB)
+    ts = Fwd.init_ts(mpop, C) 
+    @info k
+    qs  = Vector{Float64}[]
+    for i=1:5NB
+        mpop = Fwd.generation!(rng, mpop, ts)
+        push!(qs, mean(mpop.popB.x))
+        if i % 100 == 0
+            #@info i
+            mpop, ts = Fwd.simplify!(mpop, ts)
+        end
+    end
+    rts = reverse_relabel(ts)
+    pts = Fwd.to_tskit(rts)
+    s0 = pts.samples(population=0)
+    s1 = pts.samples(population=1)
+    xs = collect(pts.breakpoints())
+    div = pts.divergence([s0, s1], mode="branch", windows=xs) ./ 2
+    piA = pts.diversity(s0, mode="branch", windows=xs) ./ 2
+    piB = pts.diversity(s1, mode="branch", windows=xs) ./ 2
+    (xs, div, piA, piB, qs, rts) 
+end
+
+X, Y = Fwd.summarize_wins(map(y->y[2:end], getindex.(res,1)), getindex.(res, 2))
+plot(X, vec(mean(Y,dims=1)))
+
+
+pts.simplify(90:100).at_index(20).draw_text() |> print
+
+pts.divergence([collect(0:2NA-1), collect(2NA:(2NA + 2NB -1))], 
+    windows=collect(pts.breakpoints()))
+
+pts.diversity(collect(0:(2NA + 2NB-1)), 
+    windows=collect(pts.breakpoints()))
  
-nodes = Fwd.active_nodes(mpop)
-es = [(n, filter(x->x.child == n, ts.edges)) for n in nodes]
-ls = map(ex->sum([x.rght-x.left for x in ex[2]]), es)
-
-filter(e->e.parent ∈ nA && e.child ∈ mpop.popB.nodes, ts.edges)
-
 # ----------------
 rng = Random.seed!(32)
 res = map(1:100) do l

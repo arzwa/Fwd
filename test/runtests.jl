@@ -7,7 +7,7 @@ msprime = pyimport("msprime")
 function compare_tables(ts1, ts2)
     n1 = ts1.tables.nodes
     n2 = ts2.tables.nodes
-    @test all(n1.time .== n2.time)
+    @test all(n1.time .≈ n2.time)  # XXX approx, reverse_relabel prone to float error
     @test all(n1.flags .== n2.flags)
     e1 = ts1.tables.edges
     e2 = ts2.tables.edges
@@ -36,43 +36,33 @@ end
             ts4 = ts0.simplify(smple .- 1)
             compare_tables(ts3, ts4)
             ts5 = Fwd.reverse_relabel(ts1)
-            ts6 = Fwd.simplify(ts5, length(ts5.nodes) .- smple .+ 1)
-            ts7 = Fwd.to_tskit(Fwd.reverse_relabel(ts6))
-            compare_tables(ts7, ts4)
+            ts6 = Fwd.simplify(ts5, reverse(length(ts5.nodes) .- smple .+ 1))
+            ts7 = Fwd.reverse_relabel(ts6)
+            ts8 = Fwd.to_tskit(Fwd.reverse_relabel(ts6))
+            compare_tables(ts8, ts4)
+            #rng = Random.seed!(12)
+            #shuffle!(rng, smple)
+            #ts9 = Fwd.to_tskit(Fwd.simplify(ts1, smple))
+            #compare_tables(ts9, ts4)
         end
     end
 end
 
-#@testset "Recombination" begin
-#    # This is a visual test to convince myself of the correctness
-#    L = 10000
-#    C = 1.0
-#    x = fill(true, L)
-#    y = fill(false, L)
-#    xs = sort(rand(L)) .* C
-#    bs = sort(rand(6) .* C)
-#    z  = similar(x)
-#    Fwd.recombine!(z, bs, x, y, xs)
-#    #@btime Fwd.recombine!(z, bs, x, y, xs)
-#    heatmap(xs, 1:3, permutedims([x y z]), size=(500,100))
-#    vline!(bs, lw=2, color=:orange, yticks=false, xlim=(0,C))
-#end
-#
-#@testset "Recombination" begin
-#    L = 10000
-#    C = 30.0
-#    M = LinearMap(C)
-#    x = fill(true, L)
-#    y = fill(false, L)
-#    xs = sort(rand(L)) .* C
-#    bs = rand_breakpoints(default_rng(), M)
-#    z  = similar(x)
-#    Fwd.recombine!(z, bs, x, y, xs)
-#    #@btime Fwd.recombine!(z, bs, x, y, xs)
-#    heatmap(xs, 1:3, permutedims([x y z]), size=(500,100))
-#    vline!(bs, lw=2, color=:orange, yticks=false, xlim=(0,C))
-#end
-#
+@testset "Recombination" begin
+    # This is a visual test to convince myself of the correctness
+    L = 10000
+    C = 1.0
+    x = fill(true, L)
+    y = fill(false, L)
+    xs = sort(rand(L)) .* C
+    bs = sort(rand(6) .* C)
+    z  = similar(x)
+    Fwd.recombine!(z, bs, x, y, xs)
+    #@btime Fwd.recombine!(z, bs, x, y, xs)
+    heatmap(xs, 1:3, permutedims([x y z]), size=(500,100))
+    vline!(bs, lw=2, color=:orange, yticks=false, xlim=(0,C), legend=false)
+end
+
 #@testset "Haploid fitness" begin
 #    L = 1000
 #    s = 0.001

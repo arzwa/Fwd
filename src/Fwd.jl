@@ -24,22 +24,13 @@ include("recombination.jl")
 export LinearMap, maplength, rand_breakpoints
 
 include("ts.jl")
-include("diploids.jl")
-include("utils.jl")
+export TreeSequence, reverse_relabel, simplify, to_tskit, from_tskit, draw_text
 
-#include("haploids.jl")
-#export HaploidWFPopulation, HaploidFixedPopulation, MainlandIsland
-#export HaploidHWLEPopulation
-#export generation!, allele_freqs
-#
-#include("simulation.jl")
-#export simulate!
+include("diploids.jl")
+export DiploidWFPopulation, generation!
+
+include("utils.jl")
 
 end # module Fwd
 
 
-# Notes
-#
-# 1. We focus on models with a discrete set of loci. A population should be a
-# matrix with haplotypes in rows, loci in columns, and an index keeping which
-# individual has which haplotypes.

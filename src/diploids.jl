@@ -31,11 +31,13 @@ function generation!(
         rng::AbstractRNG,
         pop::DiploidWFPopulation, 
         idx::Vector{Int},
-        ts::TreeSequence)
+        ts::TreeSequence,
+        popid=0)   # XXX don't like the `popid`
     @unpack N, x, _x, arch, recmap, nodes = pop
     @assert length(idx) == 2N
     # new nodes to ts
-    ns = addnodes!(ts, 2N, ts.nodes[nodes[1]]+1)
+    exnode = ts.nodes[nodes[1]]
+    ns = addnodes!(ts, 2N, Node(time(exnode)+1, popid))
     for k=1:N  # offspring individual k
         m = idx[k]
         f = idx[N+k]
@@ -46,6 +48,10 @@ function generation!(
         bps, edges = recombine(rng, nodes[m1], nodes[m2], om, recmap)
         recombine!(_x[k], bps, x[m1], x[m2], arch.xs) 
         addedges!(ts, edges)
+        if length(bps) > 1
+            nk, n1, n2 = om, nodes[m1], nodes[m2]
+           # @info "" (nk, n1, n2) (k, _x[k]) (m1, x[m1]) (m2, x[m2]) bps edges
+        end
         mutations = rand_mutations(rng, arch.mut) 
         mutation!(_x[k], mutations)
         # paternal haplotype
@@ -53,6 +59,10 @@ function generation!(
         bps, edges = recombine(rng, nodes[f1], nodes[f2], of, recmap)
         recombine!(_x[N+k], bps, x[f1], x[f2], arch.xs) 
         addedges!(ts, edges)
+        if length(bps) > 1
+            nk, n1, n2 = of, nodes[f1], nodes[f2]
+          #  @info "" (nk, n1, n2) (k, _x[k]) (f1, x[f1]) (f2, x[f2]) bps edges
+        end
         mutations = rand_mutations(rng, arch.mut) 
         mutation!(_x[N+k], mutations)
         # XXX better have mutations at population level, since arch is
@@ -92,8 +102,11 @@ function migration!(rng, metapop::TwoPopOneWay{P}) where P<:DiploidWFPopulation
     idx = sample(rng, 1:NA, nmig) 
     for k=1:nmig
         i = idx[k]  # i is the index of the migrant individual in A
-        copy!(popB.x[k]   , popA.x[i]   )
-        copy!(popB.x[NB+k], popA.x[NA+i])
+        #copy!(popB.x[k]   , copy(popA.x[i]))
+        #copy!(popB.x[NB+k], copy(popA.x[NA+i]))
+        #XXX paranoid
+        popB.x[k]    = deepcopy(popA.x[i])
+        popB.x[NB+k] = deepcopy(popA.x[NA+i])
         popB.nodes[k]    = popA.nodes[i]
         popB.nodes[NB+k] = popA.nodes[NA+i]
     end
@@ -106,23 +119,34 @@ end
 
 function generation!(rng, metapop::TwoPopOneWay, ts::TreeSequence)
     migration!(rng, metapop)
-    pops = map([metapop.popA, metapop.popB]) do pop
-        w = eval_fitness(pop)
-        idx = sample(rng, 1:pop.N, Weights(w), 2pop.N)
-        generation!(rng, pop, idx, ts)
-    end
-    reconstruct(metapop, popA=pops[1], popB=pops[2])
+    @unpack popA, popB = metapop
+    w = eval_fitness(popA)
+    idx = sample(rng, 1:popA.N, Weights(w), 2popA.N)
+    popA_ = generation!(rng, popA, idx, ts, 1)
+    w = eval_fitness(popB)
+    idx = sample(rng, 1:popB.N, Weights(w), 2popB.N)
+    popB_ = generation!(rng, popB, idx, ts, 2)
+    reconstruct(metapop, popA=popA_, popB=popB_)
 end
 
 function simplify!(pop::TwoPopOneWay, ts::TreeSequence)
     @unpack popA, popB = pop
     ns = active_nodes(pop)
     sts = simplify(ts, ns)
-    nv = length(sts.nodes)
-    nn = length(ns) 
-    popA.nodes .= collect(nv-nn+1:(nv-nn+2popA.N))
-    popB.nodes .= collect((nv-nn+2popA.N+1):nv)
+    T = time(sts.nodes[end])
+    # XXX the indices are not what I expected?
+    popB.nodes .= findall(x->time(x) == T && population(x) == 2, sts.nodes)
+    popA.nodes .= findall(x->time(x) == T && population(x) == 1, sts.nodes)
     return pop, sts
 end
 
+function init_ts(pop::TwoPopOneWay{P}, L::V) where {P<:DiploidWFPopulation,V}
+    @unpack popA, popB = pop
+    N = popA.N + popB.N
+    nodesA = [Node(0, 1) for _=1:2popA.N]
+    nodesB = [Node(0, 2) for _=1:2popB.N]
+    edges = Edge{Int,V}[]
+    children = [Int[] for _=1:2N]
+    TreeSequence([nodesA; nodesB], edges, children, L, true)
+end
 
