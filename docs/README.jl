@@ -15,7 +15,7 @@
 # faster compared to the `tskit` implementation), but of course it would be
 # less prone to bugs...
 
-# Example of a purely neutral simulation
+# ## A purely neutral simulation
 using Fwd, Random, StatsBase
 
 # Set up:
@@ -39,3 +39,49 @@ let
     print(draw_text(sts))
     print(pts.simplify(0:2N-1, keep_input_roots=true).draw_text())
 end
+
+
+# ## Barrier locus
+using Plots, WrightDistribution 
+
+NA = 100
+NB = 500
+L = 1
+C = 0.2
+s = 0.05
+m = 0.005
+h = 0.5
+u = s*h/200
+xs = collect(C/2L:C/L:C)
+AA = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
+AB = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u  ) for _=1:L], xs)
+R  = LinearMap(C)
+xA = [ones(Bool, L) for _=1:2NA]
+xB = [zeros(Bool, L) for _=1:2NB]
+nA = collect(1:2NA)
+nB = collect(1:2NB) .+ 2NA
+popA = DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
+popB = DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
+
+qs, ts, pts = let
+    rng  = Random.seed!(1)
+    mpop = TwoPopOneWay(m, popA, popB)
+    ts   = init_ts(mpop, C) 
+    qs   = Vector{Float64}[]
+    ngen = 20NB
+    for i=1:ngen
+        mpop = Fwd.generation!(rng, mpop, ts)
+        push!(qs, mean(mpop.popB.x))
+        if i % NB == 0
+            mpop, ts = Fwd.simplify!(mpop, ts)
+        end
+    end
+    rts = reverse_relabel(ts)
+    pts = Fwd.to_tskit(rts)
+    qs, ts, pts
+end
+
+stephist(hcat(qs...)', norm=true)
+d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
+plot!(0:0.001:1, p->pdf(d,1-p))
+

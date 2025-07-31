@@ -27,7 +27,7 @@ include("ts.jl")
 export TreeSequence, reverse_relabel, simplify, to_tskit, from_tskit, draw_text
 
 include("diploids.jl")
-export DiploidWFPopulation, generation!
+export DiploidWFPopulation, generation!, TwoPopOneWay, init_ts
 
 include("utils.jl")
 

@@ -17,9 +17,9 @@ end
 NA = 100
 NB = 100
 L = 1
-C = 0.0005
+C = 0.005
 s = 0.05
-m = 0.0
+m = 0.01
 h = 0.5
 u = 0.001
 xs = collect(C/2L:C/L:C)
@@ -70,7 +70,7 @@ x, dab, da, db = diffdiv(pts)
 plot!(p1, x, dab, line=:steppre)
 plot!(p2, x, da , line=:steppre)
 plot!(p3, x, db , line=:steppre)
-plot(p1,p2,p3,layout=(1,3), size=(700,200), ylim=(0,5ngen))
+plot(p1,p2,p3,layout=(1,3), size=(700,200))
 
 theights(pts)
 theights(ppts)
@@ -153,7 +153,7 @@ plot(P1, P2, P3, layout=(1,3), legend=false, size=(900,200))
 
 
 # -------------------------------
-nrep = 1
+nrep = 20
 res = map(1:nrep) do k
     popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
     popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
@@ -161,7 +161,7 @@ res = map(1:nrep) do k
     ts = Fwd.init_ts(mpop, C) 
     @info k
     qs  = Vector{Float64}[]
-    for i=1:5NB
+    for i=1:10NB
         mpop = Fwd.generation!(rng, mpop, ts)
         push!(qs, mean(mpop.popB.x))
         if i % 100 == 0
