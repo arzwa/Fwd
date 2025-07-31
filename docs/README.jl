@@ -62,13 +62,13 @@ nA = collect(1:2NA)
 nB = collect(1:2NB) .+ 2NA
 popA = DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
 popB = DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
+ngen = 20NB
 
 qs, ts, pts = let
     rng  = Random.seed!(1)
     mpop = TwoPopOneWay(m, popA, popB)
     ts   = init_ts(mpop, C) 
     qs   = Vector{Float64}[]
-    ngen = 20NB
     for i=1:ngen
         mpop = Fwd.generation!(rng, mpop, ts)
         push!(qs, mean(mpop.popB.x))
@@ -88,4 +88,9 @@ d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
 @info "mean" mean(q), 1-mean(d)
 @info "variance" var(q), var(d)
 
+# remove root nodes
+pts = pts.simplify()
+heights = map(tree->[tree.time(r) for r in tree.roots], pts.trees())[1:end-1]
+heights = map(h->length(h) > 1 ? ngen : h[1], heights)
+heights[1:150:end]
 
