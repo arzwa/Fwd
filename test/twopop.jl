@@ -105,16 +105,22 @@ qs  = Vector{Float64}[]
 #push!(qs, mean(mpop.popB.x))
 
 rng = Random.seed!(1)
-for i=1:100NB
+ngen = 100NB
+for i=1:ngen
     mpop = Fwd.generation!(rng, mpop, ts)
     push!(qs, mean(mpop.popB.x))
     if i % NB == 0
-        @info "$i/$(100NB)" 
+        @info "$i/$ngen" 
         mpop, ts = Fwd.simplify!(mpop, ts)
     end
 end
 rts = reverse_relabel(ts)
 pts = Fwd.to_tskit(rts)
+
+stephist(hcat(qs...)', norm=true)
+d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
+plot!(0:0.001:1, p->pdf(d,1-p))
+
 
 hs = theights(pts)
 ix = findall(x->length(x) == 1, hs)
@@ -135,10 +141,6 @@ cts = msprime.sim_ancestry(
     random_seed=7)
 
 from_tskit(cts).nodes
-
-stephist(hcat(qs...)', norm=true)
-d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
-plot!(0:0.001:1, p->pdf(d,1-p))
 
 x, dab, da, db = diffdiv(cts)
 P1 = plot(x, dab, line=:steppre, title="AB", legend=false, yscale=:log10)

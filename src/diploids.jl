@@ -8,6 +8,7 @@
     nodes  :: Vector{T}  # tree sequence nodes
 end
 
+# Indexing yields an individual's genome
 Base.getindex(d::DiploidWFPopulation, i) = (d.x[i], d.x[d.N + i])
 
 function eval_fitness(pop::DiploidWFPopulation)
@@ -116,11 +117,18 @@ end
 function simplify!(pop::TwoPopOneWay, ts::TreeSequence)
     @unpack popA, popB = pop
     ns = active_nodes(pop)
-    sts = simplify(ts, ns)
-    T = time(sts.nodes[end])
+    sts = simplify(ts, ns, keep_roots=true)
+    #T = time(sts.nodes[end])
     # XXX the indices are not what I expected?
-    popB.nodes .= findall(x->time(x) == T && population(x) == 2, sts.nodes)
-    popA.nodes .= findall(x->time(x) == T && population(x) == 1, sts.nodes)
+    #popA.nodes .= findall(x->time(x) == T && population(x) == 1, sts.nodes)
+    #popB.nodes .= findall(x->time(x) == T && population(x) == 2, sts.nodes)
+    nv = length(sts.nodes)
+    NA = length(popA.nodes)
+    NB = length(popB.nodes)
+    na = (nv-NA-NB+1):(nv-NB)
+    nb = (nv-NB+1):nv
+    popA.nodes .= collect(na)
+    popB.nodes .= collect(nb)
     return pop, sts
 end
 

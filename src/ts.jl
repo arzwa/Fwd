@@ -158,7 +158,6 @@ function simplify(
                 x = X[1]
                 α = x
                 if !isempty(Q) && first(Q).left < x.rght
-                    #α = Segment(x.node, x.left, first(Q).rght)
                     α = Segment(x.node, x.left, first(Q).left)
                     x = Segment(x.node, first(Q).left, x.rght)
                     push!(Q, x)
@@ -180,27 +179,33 @@ function simplify(
             push!(A[u], α)
         end
     end
-    sort!(nedges, by=x->(x.parent, x.child, x.rght, x.left))
-    nnedges = Edge{T,V}[]
+    nedges, nchildren = _simplify_edges!(nedges, nchildren)
+    sts = TreeSequence(nnodes, nedges, nchildren, L, false)
+    return forward ? reverse_relabel(sts, false) : sts
+end
+
+function _simplify_edges!(edges::Vector{Edge{T,V}}, children) where {T,V}
+    sort!(edges, by=x->(x.parent, x.child, x.rght, x.left))
+    _edges = Edge{T,V}[]
     start = 1
-    for j in 2:length(nedges)
-        ei = nedges[j-1]
-        ej = nedges[j]
-        condition = (
-            ei.rght != ej.left || ei.parent != ej.parent || ei.child != ej.child)
+    for j in 2:length(edges)
+        ei = edges[j-1]
+        ej = edges[j]
+        condition = (ei.rght != ej.left || 
+            ei.parent != ej.parent || 
+            ei.child != ej.child)
         if condition  # edges must not be merged
-            ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
-            addedge!(nnedges, nchildren, ek)
+            ek = Edge(ei.parent, ei.child, edges[start].left, ei.rght)
+            addedge!(_edges, children, ek)
             start = j
         end
     end
-    if length(nedges) > 0 
-        ei = last(nedges)
-        ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
-        addedge!(nnedges, nchildren, ek)
+    if length(edges) > 0 
+        ei = last(edges)
+        ek = Edge(ei.parent, ei.child, edges[start].left, ei.rght)
+        addedge!(_edges, children, ek)
     end
-    sts = TreeSequence(nnodes, nnedges, nchildren, L, false)
-    return forward ? reverse_relabel(sts, false) : sts
+    return _edges, children
 end
 
 function reverse_relabel(ts::TreeSequence, update=true)
@@ -262,17 +267,8 @@ function sort_edges(edges, children)
     edges[o], nchildren 
 end
 
-
 function collect_edges(ts, nodes)
     es = [filter(x->x.child == n, ts.edges) for n in nodes]
-end
-
-# XXX note that not all leaf nodes will have edges for their full sequence
-# length in a simplified ts when the sample has not fully coalesced...
-function check_edges(ts, nodes)
-    es = collect_edges(ts, nodes)
-    ls = map(ex->sum([x.rght-x.left for x in ex]), es)
-    all(ls .== ts.L)
 end
 
 function check_children(ts)

@@ -31,7 +31,6 @@ end
         for N in 2:10
             smple = collect(1:N)
             ts2 = Fwd.simplify(ts1, smple)
-            @test Fwd.check_edges(ts2, smple)
             ts3 = Fwd.to_tskit(ts2)
             ts4 = ts0.simplify(smple .- 1)
             compare_tables(ts3, ts4)
