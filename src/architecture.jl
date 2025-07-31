@@ -1,6 +1,3 @@
-# XXX Currently assuming models without epistatic interactions, or interactions
-# between genetics and life history/sex/...
-# What is the elegant, functional way to implement interactions of that sort?
 abstract type Locus end
 abstract type MutationSampler end
 
@@ -17,8 +14,6 @@ struct DiploidBiLocus{T} <: Locus
     s01 :: T
     s11 :: T
     u   :: T  
-    # XXX this should be the diploid mutation rate with the current
-    # logic of the mutation implementation.
 end
 
 fitnesseffect(l::DiploidBiLocus, x, y) = x != y ? l.s01 : (x == 1 ? l.s11 : 0.0)
