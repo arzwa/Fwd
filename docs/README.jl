@@ -81,7 +81,11 @@ qs, ts, pts = let
     qs, ts, pts
 end
 
-stephist(hcat(qs...)', norm=true)
+# Compare deleterious allele frequencies against theoretical prediction
+# (diffusion theory)
+q = vec(hcat(qs...)')
 d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
-plot!(0:0.001:1, p->pdf(d,1-p))
+@info "mean" mean(q), 1-mean(d)
+@info "variance" var(q), var(d)
+
 
