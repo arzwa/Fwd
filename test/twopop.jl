@@ -34,30 +34,30 @@ popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA
 popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
 ts = Fwd.init_ts(mpop, C) 
-rng = Random.seed!(32)
-ngen = 300
+rng = Random.seed!(323)
+ngen = 100
 for i=1:ngen
     mpop = Fwd.generation!(rng, mpop, ts);
 end
 
-ix = 1:5
-draw_text(simplify(ts, [mpop.popA.nodes[ix]; mpop.popB.nodes[ix]], 
-    keep_roots=true)) |> print
+rts = reverse_relabel(ts)
+draw_text(simplify(rts, [1:5; 2NA+1:2NA+5], keep_roots=true)) |> print
 
-pts = to_tskit(reverse_relabel(ts))
-smpl = [pts.samples(population=0)[ix]; pts.samples(population=1)[ix]]
+pts = to_tskit(rts)
+#pts.simplify(pts.samples(), keep_input_roots=true)
+
+smpl = [pts.samples(population=0)[1:5]; pts.samples(population=1)[1:5]]
 pts.simplify(smpl, keep_input_roots=true).draw_text() |> print
+draw_text(simplify(rts, [1:5; 2NA+1:2NA+5], keep_roots=true)) |> print
 
 
-sts.simplify(smpl, keep_input_roots=true).at(0.05).draw_text() |> print
-
-demography = msprime.Demography.from_tree_sequence(spts)
+demography = msprime.Demography.from_tree_sequence(pts)
 demography.populations[1].initial_size=NA
 demography.populations[2].initial_size=NB
 demography.set_migration_rate(1, 0, 0.5)
 cts = msprime.sim_ancestry(
     demography=demography,
-    initial_state=spts,
+    initial_state=pts,
     discrete_genome=false,
     ploidy=2,
     random_seed=1)
@@ -81,8 +81,8 @@ theights(ppts)
 # -----------------------------------------------------------------------
     
 NA = 100
-NB = 100
-L = 5
+NB = 500
+L = 1
 C = 0.5
 s = 0.05
 m = 0.005
@@ -119,12 +119,8 @@ pts = Fwd.to_tskit(rts)
 hs = theights(pts)
 ix = findall(x->length(x) == 1, hs)
 xs = collect(pts.breakpoints())[ix .+ 1]
-plot(xs, vcat(hs[ix]...), line=:steppre, size=(700,200))
+plot(xs, vcat(hs[ix]...), line=:steppre, size=(700,200), yscale=:log10)
 vline!(AB.xs)
-
-plot!(xs, hs[:,2], line=:steppre)
-
-scatter(log.(hs[:,1]), log.(hs[:,2]), ms=1)
 
 demography = msprime.Demography.from_tree_sequence(pts)
 demography.populations[1].initial_size=NA
@@ -140,12 +136,12 @@ cts = msprime.sim_ancestry(
 
 from_tskit(cts).nodes
 
-stephist(vcat(qs...), norm=true)
+stephist(hcat(qs...)', norm=true)
 d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
 plot!(0:0.001:1, p->pdf(d,1-p))
 
 x, dab, da, db = diffdiv(cts)
-P1 = plot(x, dab, line=:steppre, title="AB", legend=false)
+P1 = plot(x, dab, line=:steppre, title="AB", legend=false, yscale=:log10)
 hline!([1/m + 2NA], label="")
 vline!([AA.xs], color=:black)
 P2 = plot(x, da, line=:steppre, title="A")

@@ -8,6 +8,8 @@
     nodes  :: Vector{T}  # tree sequence nodes
 end
 
+Base.getindex(d::DiploidWFPopulation, i) = (d.x[i], d.x[d.N + i])
+
 function eval_fitness(pop::DiploidWFPopulation)
     @unpack N, x, arch = pop
     w = map(i->fitness(arch, x[i], x[N+i]), 1:N)
@@ -39,37 +41,22 @@ function generation!(
     exnode = ts.nodes[nodes[1]]
     ns = addnodes!(ts, 2N, Node(time(exnode)+1, popid))
     for k=1:N  # offspring individual k
-        m = idx[k]
-        f = idx[N+k]
-        om = ns[k]
-        of = ns[N+k]
-        # maternal haplotype
-        (m1, m2) = rand(rng) < 0.5 ? (m, N+m) : (N+m, m)
-        bps, edges = recombine(rng, nodes[m1], nodes[m2], om, recmap)
-        recombine!(_x[k], bps, x[m1], x[m2], arch.xs) 
-        addedges!(ts, edges)
-        if length(bps) > 1
-            nk, n1, n2 = om, nodes[m1], nodes[m2]
-           # @info "" (nk, n1, n2) (k, _x[k]) (m1, x[m1]) (m2, x[m2]) bps edges
-        end
-        mutations = rand_mutations(rng, arch.mut) 
-        mutation!(_x[k], mutations)
-        # paternal haplotype
-        (f1, f2) = rand(rng) < 0.5 ? (f, N+f) : (N+f, f)
-        bps, edges = recombine(rng, nodes[f1], nodes[f2], of, recmap)
-        recombine!(_x[N+k], bps, x[f1], x[f2], arch.xs) 
-        addedges!(ts, edges)
-        if length(bps) > 1
-            nk, n1, n2 = of, nodes[f1], nodes[f2]
-          #  @info "" (nk, n1, n2) (k, _x[k]) (f1, x[f1]) (f2, x[f2]) bps edges
-        end
-        mutations = rand_mutations(rng, arch.mut) 
-        mutation!(_x[N+k], mutations)
-        # XXX better have mutations at population level, since arch is
-        # population level anyhow?
+        _generate_offspring!(rng, pop, ts, idx[k], ns[k], k)
+        _generate_offspring!(rng, pop, ts, idx[N+k], ns[N+k], N+k)
     end
     DiploidWFPopulation(N, _x, x, arch, recmap, collect(ns))
 end
+
+function _generate_offspring!(rng, pop, ts, p, o, i)
+    @unpack N, arch, recmap, nodes = pop 
+    (p1, p2) = rand(rng) < 0.5 ? (p, N+p) : (N+p, p)
+    bps, edges = recombine(rng, nodes[p1], nodes[p2], o, recmap)
+    recombine!(pop._x[i], bps, pop.x[p1], pop.x[p2], arch.xs) 
+    addedges!(ts, edges)
+    mutations = rand_mutations(rng, arch.mut) 
+    mutation!(pop._x[i], mutations)
+end
+
 
 """
     TwoPopOneWay
@@ -102,11 +89,8 @@ function migration!(rng, metapop::TwoPopOneWay{P}) where P<:DiploidWFPopulation
     idx = sample(rng, 1:NA, nmig) 
     for k=1:nmig
         i = idx[k]  # i is the index of the migrant individual in A
-        #copy!(popB.x[k]   , copy(popA.x[i]))
-        #copy!(popB.x[NB+k], copy(popA.x[NA+i]))
-        #XXX paranoid
-        popB.x[k]    = deepcopy(popA.x[i])
-        popB.x[NB+k] = deepcopy(popA.x[NA+i])
+        copy!(popB.x[k]   , popA.x[i])
+        copy!(popB.x[NB+k], popA.x[NA+i])
         popB.nodes[k]    = popA.nodes[i]
         popB.nodes[NB+k] = popA.nodes[NA+i]
     end

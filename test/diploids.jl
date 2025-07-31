@@ -34,7 +34,7 @@ rts = map(1:100) do i
             pop, ts = Fwd.simplify!(pop, ts)
         end
     end
-    Fwd.reverse_relabel(ts)
+    reverse_relabel(simplify(ts, pop.nodes))
 end
 mean(x->time(x.nodes[end]), rts), 4N*(1-1/2N)
 
@@ -61,7 +61,7 @@ pts.simplify(pts.samples(), keep_input_roots=true).draw_text()|>print
 
 rts = reverse_relabel(sts)
 
-sts = Fwd.simplify(ts, pop.nodes)
+sts = Fwd.simplify(ts, pop.nodes, keep_roots=true)
 print(Fwd.draw_text(ts))
 print(Fwd.draw_text(sts))
 print(pts.simplify(0:2N-1).draw_text())
