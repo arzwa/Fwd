@@ -291,7 +291,8 @@ end
 # neutral WF -----------------------------------------------------------
 # pop is a collection of node IDs, where index k and N+k give the two
 # haplotypes in individual k
-function generation!(rng, pop, ts::TreeSequence{T}, recmap) where T
+# XXX for testing, not actually used elsewhere
+function _generation!(rng, pop, ts::TreeSequence{T}, recmap) where T
     @unpack nodes, edges, children, L = ts
     n = length(ts.nodes) 
     N = length(pop)÷2
