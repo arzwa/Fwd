@@ -17,9 +17,9 @@ end
 NA = 100
 NB = 100
 L = 1
-C = 0.5
+C = 0.0005
 s = 0.05
-m = 0.0001
+m = 0.0
 h = 0.5
 u = 0.001
 xs = collect(C/2L:C/L:C)
@@ -35,14 +35,21 @@ popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
 ts = Fwd.init_ts(mpop, C) 
 rng = Random.seed!(32)
-ngen = 500
-for i=1:500
+ngen = 300
+for i=1:ngen
     mpop = Fwd.generation!(rng, mpop, ts);
 end
-mpop, sts = Fwd.simplify!(deepcopy(mpop), ts)
+
+ix = 1:5
+draw_text(simplify(ts, [mpop.popA.nodes[ix]; mpop.popB.nodes[ix]], 
+    keep_roots=true)) |> print
 
 pts = to_tskit(reverse_relabel(ts))
-spts = pts.simplify(pts.samples(), keep_input_roots=true)
+smpl = [pts.samples(population=0)[ix]; pts.samples(population=1)[ix]]
+pts.simplify(smpl, keep_input_roots=true).draw_text() |> print
+
+
+sts.simplify(smpl, keep_input_roots=true).at(0.05).draw_text() |> print
 
 demography = msprime.Demography.from_tree_sequence(spts)
 demography.populations[1].initial_size=NA
@@ -75,10 +82,10 @@ theights(ppts)
     
 NA = 100
 NB = 100
-L = 1
-C = 1.0
+L = 5
+C = 0.5
 s = 0.05
-m = 0.0
+m = 0.005
 h = 0.5
 u = s*h/200
 xs = collect(C/2L:C/L:C)
@@ -109,7 +116,15 @@ end
 rts = reverse_relabel(ts)
 pts = Fwd.to_tskit(rts)
 
-theights(pts)
+hs = theights(pts)
+ix = findall(x->length(x) == 1, hs)
+xs = collect(pts.breakpoints())[ix .+ 1]
+plot(xs, vcat(hs[ix]...), line=:steppre, size=(700,200))
+vline!(AB.xs)
+
+plot!(xs, hs[:,2], line=:steppre)
+
+scatter(log.(hs[:,1]), log.(hs[:,2]), ms=1)
 
 demography = msprime.Demography.from_tree_sequence(pts)
 demography.populations[1].initial_size=NA

@@ -57,6 +57,10 @@ end
 
 pts = Fwd.to_tskit(Fwd.reverse_relabel(ts))
 
+pts.simplify(pts.samples(), keep_input_roots=true).draw_text()|>print
+
+rts = reverse_relabel(sts)
+
 sts = Fwd.simplify(ts, pop.nodes)
 print(Fwd.draw_text(ts))
 print(Fwd.draw_text(sts))

@@ -1,11 +1,10 @@
+abstract type AbstractNode end
 
 # Interface for an AbstractNode: 
 Base.time(n::AbstractNode) = undefined
 update_time(n::AbstractNode) = undefined
 to_tskit(n::AbstractNode) = undefined
 population(n::AbstractNode) = 0
-
-abstract type AbstractNode end
 
 struct Node{T,V} <: AbstractNode
     time :: T
@@ -34,6 +33,7 @@ struct TreeSequence{T<:Integer,V<:Real,W}
     nodes    :: Vector{W}          # stores birth times 
     edges    :: Vector{Edge{T,V}}  # inheritance edges 
     children :: Vector{Vector{T}}  # for each node, IDs of edges to children
+    # XXX misnomer ...
     L        :: V                  # chromosome length
     forward  :: Bool               # forward or backward ts?
 end
@@ -99,14 +99,20 @@ end
 
 Base.isless(x::Segment, y::Segment) = x.left < y.left
 
-function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
+function simplify(
+        ts::TreeSequence{T,V,W}, 
+        smpl::Vector{T};
+        keep_unary=false,
+        keep_roots=false  # misnomer -- keeps the oldest nodes that are roots
+    ) where {T,V,W}
     @unpack nodes, edges, children, L, forward = ts
-    #@assert !forward
     if forward
         smpl = reverse(smpl)  
         order = reverse(1:length(nodes))
+        rt = time(nodes[1])
     else 
         order = 1:length(nodes)
+        rt = time(nodes[end])
     end
     nnodes = W[]
     nchildren = Vector{T}[]
@@ -134,7 +140,7 @@ function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
                 end
             end
         end
-        #@info "before while (S4)" u uedges filter(!isempty, A) Q
+        #@info "before while (S4)" u edges[children[u]] filter(!isempty, A) Q
         while !isempty(Q)  # S4
             l = first(Q).left
             r = L 
@@ -145,7 +151,10 @@ function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
                 r = min(r, x.rght)
             end
             r = !isempty(Q) ? min(r, first(Q).left) : r
-            if length(X) == 1  # S5, no overlapping segments
+            # to keep unary nodes, we skip the special case of |X|=1
+            condition = !keep_unary && length(X) == 1 && (
+                !keep_roots || time(nodes[u]) != rt)
+            if condition # S5, no node to add
                 x = X[1]
                 α = x
                 if !isempty(Q) && first(Q).left < x.rght
@@ -190,8 +199,6 @@ function simplify(ts::TreeSequence{T,V,W}, smpl::Vector{T}) where {T,V,W}
         ek = Edge(ei.parent, ei.child, nedges[start].left, ei.rght)
         addedge!(nnedges, nchildren, ek)
     end
-    # insert input roots...
-    # https://github.com/tskit-dev/tskit/blob/c23aafcfc3bd49bc41955a3f509f50d0fbf4b840/c/tskit/tables.c
     sts = TreeSequence(nnodes, nnedges, nchildren, L, false)
     return forward ? reverse_relabel(sts, false) : sts
 end
@@ -277,7 +284,9 @@ end
 
 draw_text(ts) = ts.draw_text()
 function draw_text(ts::TreeSequence)
+    @warn "Python! add 1 for node indices"
     if ts.forward 
+        @warn "forward -> backward"
         ts = reverse_relabel(ts)
     end
     to_tskit(ts).draw_text()

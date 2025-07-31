@@ -58,9 +58,17 @@ end
     bs = sort(rand(6) .* C)
     z  = similar(x)
     Fwd.recombine!(z, bs, x, y, xs)
+    xi = true
+    x0 = 1
+    for k=1:length(bs)
+        i = findfirst(x->x>bs[k], xs)
+        @test all(z[x0:i-1] .== xi)
+        x0 = i
+        xi = !xi
+    end
     #@btime Fwd.recombine!(z, bs, x, y, xs)
-    heatmap(xs, 1:3, permutedims([x y z]), size=(500,100))
-    vline!(bs, lw=2, color=:orange, yticks=false, xlim=(0,C), legend=false)
+    #heatmap(xs, 1:3, permutedims([x y z]), size=(500,100))
+    #vline!(bs, lw=2, color=:orange, yticks=false, xlim=(0,C), legend=false)
 end
 
 #@testset "Haploid fitness" begin

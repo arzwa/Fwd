@@ -15,7 +15,7 @@ end
 
 function simplify!(pop::DiploidWFPopulation, ts::TreeSequence)
     @unpack nodes, N = pop
-    sts = simplify(ts, nodes)
+    sts = simplify(ts, nodes, keep_roots=true)
     nv = length(sts.nodes)
     pop.nodes .= collect(nv-2N+1:nv)
     return pop, sts
