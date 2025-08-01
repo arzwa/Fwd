@@ -26,8 +26,11 @@ export LinearMap, maplength, rand_breakpoints
 include("ts.jl")
 export TreeSequence, reverse_relabel, simplify, to_tskit, from_tskit, draw_text
 
-include("diploids.jl")
-export DiploidWFPopulation, generation!, TwoPopOneWay, init_ts
+include("wfpop.jl")
+export WFPopulation, Haploid, Diploid, generation!, init_ts
+
+include("twopop.jl")
+export TwoPopOneWay
 
 include("utils.jl")
 

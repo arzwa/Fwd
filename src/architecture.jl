@@ -47,9 +47,9 @@ function logfitness(a::Vector{L}, x) where L
     mapreduce(i->fitnesseffect(a[i], x[i]), +, 1:length(x)) 
 end
 
-function logfitness(a::Vector{L}, x, y) where L
+function logfitness(a::Vector{L}, x::Tuple) where L
     length(a) == 0 && return 0.0
-    mapreduce(i->fitnesseffect(a[i], x[i], y[i]), +, 1:length(x)) 
+    mapreduce(i->fitnesseffect(a[i], x[1][i], x[2][i]), +, 1:length(x)) 
 end
 
 fitness = exp ∘ logfitness

@@ -15,8 +15,12 @@
 # faster compared to the `tskit` implementation), but of course it would be
 # less prone to bugs...
 
+using Fwd, Random, StatsBase, Plots
+
 # ## A purely neutral simulation
-using Fwd, Random, StatsBase
+#
+# We have to provide an 'empty' genetic architecture to do a neutral forward
+# similation with tree sequence recording.
 
 # Set up:
 N = 3  # diploid individuals
@@ -24,11 +28,11 @@ C = 0.1  # map length
 A = Architecture(DiploidBiLocus{Float64}[], Float64[])  # empty selective architecture
 R = LinearMap(C)
 x = [Bool[] for _=1:2N] # haplotypes for selected loci
-ts = Fwd.init_ts(2N, C) 
 
 let 
+    pop = WFPopulation(ploidy=Diploid(), N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
+    ts  = Fwd.init_ts(pop, C) 
     rng = Random.seed!(19)
-    pop = DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
     for _=1:3
         idx = sample(rng, 1:N, 2N)
         pop = Fwd.generation!(rng, pop, idx, ts)
@@ -41,27 +45,26 @@ let
 end
 
 
-# ## Barrier locus
-using Plots, WrightDistribution 
-
+# ## Barrier locus/loci
+# 
+# We'll simulate a haploid pair of populations.
 NA = 100
 NB = 500
 L = 1
 C = 0.2
 s = 0.05
 m = 0.005
-h = 0.5
-u = s*h/200
+u = s/200
 xs = collect(C/2L:C/L:C)
-AA = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
-AB = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u  ) for _=1:L], xs)
+AA = Architecture([Fwd.HaploidBiLocus(0., 0.) for _=1:L], xs)
+AB = Architecture([Fwd.HaploidBiLocus(-s,  u) for _=1:L], xs)
 R  = LinearMap(C)
-xA = [ones(Bool, L) for _=1:2NA]
-xB = [zeros(Bool, L) for _=1:2NB]
-nA = collect(1:2NA)
-nB = collect(1:2NB) .+ 2NA
-popA = DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
-popB = DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
+xA = [ones( Bool, L) for _=1:NA]
+xB = [zeros(Bool, L) for _=1:NB]
+nA = collect(1:NA)
+nB = collect(1:NB) .+ 2NA
+popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
+popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
 ngen = 20NB
 
 qs, ts, pts = let
@@ -83,14 +86,21 @@ end
 
 # Compare deleterious allele frequencies against theoretical prediction
 # (diffusion theory)
+using WrightDistribution
 q = vec(hcat(qs...)')
-d = Wright(-2NB*s, 2NB*u, 2NB*(m + u), h)
-@info "mean" mean(q), 1-mean(d)
-@info "variance" var(q), var(d)
+d = Wright(-2NB*s, NB*u, NB*(m + u), 0.5)
+stephist(q, norm=true, color=:gray, fill=true, fillalpha=0.2, label="simulation")
+plot!(0:0.001:1, x->pdf(d,1-x), label="diffusion theory", xlabel="\$q\$", ylabel="density")
+savefig("data/pl1.svg") ##
+# ![](data/pl1.svg)
 
-# remove root nodes
+# get tree heights
 pts = pts.simplify()
 heights = map(tree->[tree.time(r) for r in tree.roots], pts.trees())[1:end-1]
 heights = map(h->length(h) > 1 ? ngen : h[1], heights)
-heights[1:150:end]
+bps = collect(pts.breakpoints())[2:end-1]
 
+plot(bps, heights, linetype=:steppre, color=:black, xlabel="map position", 
+    ylabel="tree height")
+savefig("data/pl2.svg") ##
+# ![](data/pl2.svg)

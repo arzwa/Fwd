@@ -40,8 +40,8 @@ end
 
 Base.getindex(ts::TreeSequence, i) = ts.nodes[i]
 
-function init_ts(N::Int, L::V; forward=true, pop=1) where V
-    nodes = [Node(0, 0) for _=1:N]
+function init_ts(N::Int, L::V; forward=true, popid=0) where V
+    nodes = [Node(0, popid) for _=1:N]
     edges = Edge{Int,V}[]
     children = [Int[] for _=1:N]
     TreeSequence(nodes, edges, children, L, forward) 
