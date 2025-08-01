@@ -101,6 +101,7 @@ heights = map(h->length(h) > 1 ? ngen : h[1], heights)
 bps = collect(pts.breakpoints())[2:end-1]
 
 plot(bps, heights, linetype=:steppre, color=:black, xlabel="map position", 
-    ylabel="tree height")
+    ylabel="tree height", size=(600,200), margin=3Plots.mm)
 savefig("docs/pl2.png") #src
 # ![](docs/pl2.png)
+
