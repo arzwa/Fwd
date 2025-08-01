@@ -91,8 +91,8 @@ q = vec(hcat(qs...)')
 d = Wright(-2NB*s, NB*u, NB*(m + u), 0.5)
 stephist(q, norm=true, color=:gray, fill=true, fillalpha=0.2, label="simulation")
 plot!(0:0.001:1, x->pdf(d,1-x), label="diffusion theory", xlabel="\$q\$", ylabel="density")
-savefig("docs/pl1.svg") #src
-# ![](docs/pl1.svg)
+savefig("docs/pl1.png") #src
+# ![](docs/pl1.png)
 
 # get tree heights
 pts = pts.simplify()
@@ -102,5 +102,5 @@ bps = collect(pts.breakpoints())[2:end-1]
 
 plot(bps, heights, linetype=:steppre, color=:black, xlabel="map position", 
     ylabel="tree height")
-savefig("docs/pl2.svg") #src
-# ![](docs/pl2.svg)
+savefig("docs/pl2.png") #src
+# ![](docs/pl2.png)
