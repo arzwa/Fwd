@@ -62,7 +62,7 @@ R  = LinearMap(C)
 xA = [ones( Bool, L) for _=1:NA]
 xB = [zeros(Bool, L) for _=1:NB]
 nA = collect(1:NA)
-nB = collect(1:NB) .+ 2NA
+nB = collect(1:NB) .+ NA
 popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
 popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
 ngen = 20NB

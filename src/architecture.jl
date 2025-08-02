@@ -40,6 +40,8 @@ function Architecture(loci, xs)
     Architecture(loci, xs, PoissonMutationSampler(loci))
 end
 
+Architecture() = Architecture(HaploidBiLocus{Float64}[], Float64[])
+
 logfitness(a::Architecture, args...) = logfitness(a.loci, args...)
 
 function logfitness(a::Vector{L}, x) where L

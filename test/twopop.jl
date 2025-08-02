@@ -1,48 +1,87 @@
-using WrightDistribution
+using Fwd, Random, StatsBase, Plots, ProgressMeter, WrightDistribution
 
-function diffdiv(pts)
-    s0 = pts.samples(population=0)
-    s1 = pts.samples(population=1)
-    xs = collect(pts.breakpoints())
-    div = pts.divergence([s0, s1], mode="branch", windows=xs) ./ 2
-    piA = pts.diversity(s0, mode="branch", windows=xs) ./ 2
-    piB = pts.diversity(s1, mode="branch", windows=xs) ./ 2
-    xs[2:end], div, piA, piB
-end
-
-function theights(pts)
-    [[t.time(r) for r in t.roots] for t in pts.trees()][1:end-1]
-end
-
-NA = 100
-NB = 100
-L = 1
-C = 0.005
+NA = 500
+NB = 800
+L = 10
+C = 1.0
 s = 0.05
-m = 0.01
-h = 0.5
-u = 0.001
+m = 0.001
+u = s/200
 xs = collect(C/2L:C/L:C)
-AA = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
-AB = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u  ) for _=1:L], xs)
+AA = Architecture([Fwd.HaploidBiLocus(0.0, 0.0) for _=1:L], xs)
+AB = Architecture([Fwd.HaploidBiLocus( -s, u  ) for _=1:L], xs)
 R  = LinearMap(C)
-xA = [ones(Bool, L) for _=1:2NA]
-xB = [zeros(Bool, L) for _=1:2NB]
-nA = collect(1:2NA)
-nB = collect(1:2NB) .+ 2NA
-popA = Fwd.DiploidWFPopulation(N=NA, arch=AA, recmap=R, x=deepcopy(xA), nodes=nA)
-popB = Fwd.DiploidWFPopulation(N=NB, arch=AB, recmap=R, x=deepcopy(xB), nodes=nB)
+xA = [ ones(Bool, L) for _=1:NA]
+xB = [zeros(Bool, L) for _=1:NB]
+nA = collect(1:NA)
+nB = collect(1:NB) .+ NA
+popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, recmap=R, x=xA, nodes=nA)
+popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, recmap=R, x=xB, nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
 ts = Fwd.init_ts(mpop, C) 
-rng = Random.seed!(323)
-ngen = 100
-for i=1:ngen
+rng = Random.seed!(15)
+ngen = 100*(NB+NA)
+@showprogress for i=1:ngen
     mpop = Fwd.generation!(rng, mpop, ts);
+    if i % 100 == 0 
+        mpop, ts = Fwd.simplify!(mpop, ts)
+    end
+end
+ts1 = simplify(ts, Fwd.leaves(ts, 1))
+ts2 = simplify(ts, Fwd.leaves(ts, 2))
+
+map([(ts1,NA), (ts2,NB)]) do (ts, N)
+    xts = reconstruct(ts, nodes=[Fwd.Node(time(n), 0) for n in ts.nodes])
+    xs, hs = Fwd.theights(xts)
+    plot(xs, hs, line=:steppre)
+    hline!([mean(filter(!isnan,hs))], color=:black)
+    hline!([2N], ls=:dash, color=:salmon)
+end |> x->plot(x..., size=(600,200))
+
+tab(NA, m) = 1/m + NA
+tb(NA, NB, m) = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
+xx, pa, pb, dab = Fwd.diffdiv(ts)
+p1 = plot( xx[2:end], pa)
+hline!([mean(pa)], color=:black)
+hline!(xx[2:end], [NA], color=:salmon, ls=:dash, lw=2)
+p2 = plot(xx[2:end], pb)
+hline!([mean(pb)], color=:black)
+hline!([tb(NA, NB, m*exp(-2L*s))], ls=:dash, lw=2, color=:salmon)
+hline!([tb(NA, NB, m)], ls=:dash, lw=2, color=:cyan)
+vline!(xs, color=:black, ls=:dash)
+p3 = plot(xx[2:end], dab, yscale=:log10)
+hline!([mean(dab)], color=:black)
+hline!([tab(NA, m)], color=:salmon, ls=:dash, lw=2)
+hline!([ngen])
+vline!(xs,color=:black,ls=:dash)
+plot(p1, p2, p3, size=(800,200), layout=(1,3))
+
+plot(xx[2:end], dab, size=(900,200), yscale=:log10)
+hline!([ngen, tab(NA, m)])
+
+using Barriers
+model = let
+    recmap = Barriers.linearmap(100, C)
+    loci = fill(Barriers.DiploidLocus(2s, 0.5, s/1000), L)
+    R = [Fwd.recrate(abs(xs[i] - xs[j])) for i=1:L, j=1:L]
+    A = Barriers.Architecture(loci, xs, R)
+    M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
+    EM = Barriers.Equilibrium(M)
 end
 
-rts = reverse_relabel(ts)
-draw_text(simplify(rts, [1:5; 2NA+1:2NA+5], keep_roots=true)) |> print
+mx = 0:0.01:C
+plot(mx, x->Barriers.me(model, x))
+tt = map(x->tab(NA, Barriers.me(model, x)), mx)
+plot(xx[2:end], dab, size=(900,200))
+plot!(mx, tt, color=:black, lw=2)
+hline!([ngen, tab(NA, m)])
 
+tt = map(x->tb(NA, NB, Barriers.me(model, x)), mx)
+plot(xx[2:end], pb, size=(900,200))
+plot!(mx, tt, color=:black, lw=2)
+
+
+#----
 pts = to_tskit(rts)
 #pts.simplify(pts.samples(), keep_input_roots=true)
 

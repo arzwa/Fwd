@@ -39,6 +39,8 @@ struct TreeSequence{T<:Integer,V<:Real,W}
 end
 
 Base.getindex(ts::TreeSequence, i) = ts.nodes[i]
+Base.length(ts::TreeSequence) = length(ts.nodes)
+Base.lastindex(ts::TreeSequence) = length(ts.nodes)
 
 function init_ts(N::Int, L::V; forward=true, popid=0) where V
     nodes = [Node(0, popid) for _=1:N]
@@ -223,8 +225,11 @@ function reverse_relabel(ts::TreeSequence, update=true)
 end
 
 function to_tskit(ts::TreeSequence)
-    @unpack nodes, edges, L, forward = ts
-    @assert !forward
+    if ts.forward
+        @warn "Forward tree sequence, will first reverse. This will relabel nodes!"
+        ts = reverse_relabel(ts)
+    end
+    @unpack nodes, edges, L = ts
     tbc = tskit.TableCollection(L)
     pops = [-1]  # default
     for n in nodes
@@ -288,6 +293,19 @@ function draw_text(ts::TreeSequence)
     to_tskit(ts).draw_text()
 end
 
+function leaves(ts::TreeSequence)
+    ns = Int64[]
+    (i, inc) = ts.forward ? (length(ts), -1) :  (1, 1)
+    t = time(ts[i])
+    while 0 < i <= length(ts) && time(ts[i]) == t 
+        push!(ns, i)
+        i += inc
+    end
+    return ns
+end
+
+leaves(ts::TreeSequence, pop) = filter(i->population(ts[i]) == pop, leaves(ts))
+
 # neutral WF -----------------------------------------------------------
 # pop is a collection of node IDs, where index k and N+k give the two
 # haplotypes in individual k
@@ -324,4 +342,5 @@ function _recombine(rng, p1, p2, c, recmap::RecombinationMap)
         isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
     end
 end
+
 

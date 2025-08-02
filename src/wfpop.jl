@@ -3,8 +3,8 @@
 abstract type Ploid end
 struct Haploid <: Ploid end
 struct Diploid <: Ploid end
-ploidy(_::Haploid) = 1
-ploidy(_::Diploid) = 2
+_ploidy(_::Haploid) = 1
+_ploidy(_::Diploid) = 2
 
 """
     WFPopulation
@@ -15,19 +15,19 @@ the offspring while in a generation loop.
 """
 @with_kw struct WFPopulation{P<:Ploid,H,T,A<:Architecture,R<:RecombinationMap}
     N      :: Int
-    x      :: Vector{H}  # haplotypes
-    _x     :: Vector{H}  = deepcopy(x) 
-    arch   :: A
+    arch   :: A = Architecture()
     recmap :: R 
     nodes  :: Vector{T}  # tree sequence nodes
     ploidy :: P
+    x      :: Vector{H}  = [Bool[] for _=1:_ploidy(ploidy)*N]  # haplotypes
+    _x     :: Vector{H}  = deepcopy(x) 
 end
 
 # Indexing yields an individual's genome
 Base.getindex(pop::WFPopulation{Haploid}, i) = pop.x[i]
 Base.getindex(pop::WFPopulation{Diploid}, i) = (pop.x[i], pop.x[pop.N + i])
 
-ploidy(pop::WFPopulation) = ploidy(pop.ploidy)
+ploidy(pop::WFPopulation) = _ploidy(pop.ploidy)
 nhaplotypes(pop::WFPopulation) = pop.N*ploidy(pop)
 
 init_ts(pop::WFPopulation, L; popid=0) = init_ts(nhaplotypes(pop), L, popid=popid)
@@ -84,7 +84,7 @@ function _generate_offspring!(rng, pop, ts, ns, k, p1, p2)
 end
 
 function _migrate!(src::W, dest::W, i, k) where W<:WFPopulation
-    copy!(dest.x[k] , src.x[i])
+    copy!(dest.x[k], src.x[i])
     dest.nodes[k] = src.nodes[i]
 end
 

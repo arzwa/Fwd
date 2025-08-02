@@ -21,22 +21,22 @@ for _=1:10
     pop = Fwd.generation!(rng, pop, idx, ts)
 end
 
-rng = Random.seed!(57)
+rng = Random.seed!(29)
 rts = map(1:100) do i
-    ts  = Fwd.init_ts(2N, C) 
-    x   = [zeros(Bool, L) for _=1:2N]
-    pop = Fwd.DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
+    ts  = Fwd.init_ts(N, C) 
+    x   = [zeros(Bool, L) for _=1:N]
+    pop = Fwd.WFPopulation(
+        ploidy=Haploid(), N=N, arch=A, recmap=R, x=x, nodes=collect(1:N))
     @info i
     for i=1:5000
-        idx = sample(rng, 1:N, 2N)
-        pop = Fwd.generation!(rng, pop, idx, ts)
+        pop = Fwd.generation!(rng, pop, ts)
         if i % 100 == 0
             pop, ts = Fwd.simplify!(pop, ts)
         end
     end
     reverse_relabel(simplify(ts, pop.nodes))
 end
-mean(x->time(x.nodes[end]), rts), 4N*(1-1/2N)
+mean(x->time(x.nodes[end]), rts), 2N*(1-1/N)
 
 
 # -----------------------------------------

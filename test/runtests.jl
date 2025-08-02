@@ -70,6 +70,51 @@ end
     #vline!(bs, lw=2, color=:orange, yticks=false, xlim=(0,C), legend=false)
 end
 
+@testset "TwoPopOneWay" begin
+    NA = 2
+    NB = 3
+    C = 0.005
+    m = 0.2
+    R  = LinearMap(C)
+    popA = WFPopulation(ploidy=Haploid(), N=NA, recmap=R, nodes=collect(1:NA))
+    popB = WFPopulation(ploidy=Haploid(), N=NB, recmap=R, nodes=collect(1:NB) .+ NA)
+    mpop = Fwd.TwoPopOneWay(m, popA, popB)
+    ts = Fwd.init_ts(mpop, C) 
+    rng = Random.seed!(323)
+    for i=1:10
+        mpop = Fwd.generation!(rng, mpop, ts);
+    end
+    @test all([ts.nodes[x].pop == 1 for x in mpop.popA.nodes])
+    @test all([ts.nodes[x].pop == 2 for x in mpop.popB.nodes])
+    mpop, sts = Fwd.simplify!(mpop, ts)
+    @test all([sts.nodes[x].pop == 1 for x in mpop.popA.nodes])
+    @test all([sts.nodes[x].pop == 2 for x in mpop.popB.nodes])
+end
 
-
+@testset "" begin
+    NA = 200
+    NB = 300
+    C = 0.5
+    m = 0.001
+    R  = LinearMap(C)
+    nA = collect(1:NA)
+    nB = collect(1:NB) .+ NA
+    popA = WFPopulation(ploidy=Haploid(), N=NA, recmap=R, nodes=collect(1:NA))
+    popB = WFPopulation(ploidy=Haploid(), N=NB, recmap=R, nodes=collect(1:NB) .+ NA)
+    mpop = Fwd.TwoPopOneWay(m, popA, popB)
+    ts = Fwd.init_ts(mpop, C) 
+    rng = Random.seed!(152)
+    ngen = 10*(NB+NA)
+    for i=1:ngen
+        mpop = Fwd.generation!(rng, mpop, ts);
+        if i % 100 == 0 
+            mpop, ts = Fwd.simplify!(mpop, ts)
+        end
+    end
+    xx, pa, pb, dab = Fwd.diffdiv(ts)
+    Epa = NA
+    Epb = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
+    Edab = 1/m + NA 
+    mean(pa), Epa, mean(pb), Epb, mean(dab), Edab 
+end
 
