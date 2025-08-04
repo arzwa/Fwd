@@ -18,19 +18,14 @@
 using Fwd, Random, StatsBase, Plots
 
 # ## A purely neutral simulation
-#
-# We have to provide an 'empty' genetic architecture to do a neutral forward
-# similation with tree sequence recording.
 
 # Set up:
 N = 3  # diploid individuals
 C = 0.1  # map length
-A = Architecture(DiploidBiLocus{Float64}[], Float64[])  # empty selective architecture
 R = LinearMap(C)
-x = [Bool[] for _=1:2N] # haplotypes for selected loci
 
-let 
-    pop = WFPopulation(ploidy=Diploid(), N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
+let N=3, C=0.1, R=LinearMap(C)  # popsize, map length, recombination map
+    pop = WFPopulation(ploidy=Diploid(), N=N, recmap=R)
     ts  = Fwd.init_ts(pop, C) 
     rng = Random.seed!(19)
     for _=1:3

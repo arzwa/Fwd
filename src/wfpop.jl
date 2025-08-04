@@ -17,10 +17,10 @@ the offspring while in a generation loop.
     N      :: Int
     arch   :: A = Architecture()
     recmap :: R 
-    nodes  :: Vector{T}  # tree sequence nodes
     ploidy :: P
-    x      :: Vector{H}  = [Bool[] for _=1:_ploidy(ploidy)*N]  # haplotypes
-    _x     :: Vector{H}  = deepcopy(x) 
+    nodes  :: Vector{T} = collect(1:_ploidy(ploidy)*N)  # tree sequence nodes
+    x      :: Vector{H} = [Bool[] for _=1:_ploidy(ploidy)*N]  # haplotypes
+    _x     :: Vector{H} = deepcopy(x) 
 end
 
 # Indexing yields an individual's genome
