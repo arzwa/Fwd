@@ -18,7 +18,7 @@ active_nodes(m::TwoPopOneWay) = [m.popA.nodes ; m.popB.nodes]
 """
     migration!(rng, metapop)
 
-!!! This migration function implements migration-as-copying, i.e. a
+!!! note: This migration function implements migration-as-copying, i.e. a
 proportion `m` of the B population is replaced by indviduals from A, but A
 is unaffected.  (biologically this could correspond to sending out asexual
 propagules -- although this is more relevant for haplodiplontic cryptogams

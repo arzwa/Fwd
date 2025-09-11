@@ -86,6 +86,8 @@ end
 function _migrate!(src::W, dest::W, i, k) where W<:WFPopulation
     copy!(dest.x[k], src.x[i])
     dest.nodes[k] = src.nodes[i]
+    # Note that migration does not change the tree sequence, only which ts
+    # nodes are in which population
 end
 
 # Functions specialized to ploidy level

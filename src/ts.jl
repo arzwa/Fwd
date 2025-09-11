@@ -6,13 +6,13 @@ update_time(n::AbstractNode) = undefined
 to_tskit(n::AbstractNode) = undefined
 population(n::AbstractNode) = 0
 
-struct Node{T,V} <: AbstractNode
-    time :: T
-    pop  :: V
+@with_kw struct Node{T,V} <: AbstractNode
+    time :: T 
+    pop  :: V = 0
 end
 
 Base.time(n::Node) = n.time
-update_time(n::Node{T}, t) where T = Node(t, n.pop)
+update_time(n::Node{T}, t) where T = reconstruct(n, time=t)
 to_tskit(n::Node) = (time=n.time, population=n.pop-1)
 population(n::Node) = n.pop
 

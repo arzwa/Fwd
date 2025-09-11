@@ -2,6 +2,7 @@ using Fwd
 using Test
 using Random
 using PyCall
+using StatsBase
 msprime = pyimport("msprime")
 
 function compare_tables(ts1, ts2)
@@ -111,10 +112,14 @@ end
             mpop, ts = Fwd.simplify!(mpop, ts)
         end
     end
-    xx, pa, pb, dab = Fwd.diffdiv(ts)
-    Epa = NA
-    Epb = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
-    Edab = 1/m + NA 
-    mean(pa), Epa, mean(pb), Epb, mean(dab), Edab 
+    xx, ta, tb, tab = Fwd.diffdiv(ts)
+    Eta = NA
+    Etb = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
+    Etb_ = NB*((3-4m) + m*NA*(2-m))/(1 + 2m*(NB-1))
+    Etb_ = (3 + 2m*NA)/(1 + 2m*NB)
+    Etab = 1/m + NA 
+    @info mean(ta), Eta
+    @info mean(tb), Etb, Etb_*NB
+    @info mean(tab), Etab
 end
 

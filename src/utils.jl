@@ -37,5 +37,5 @@ function diffdiv(ts, pop1=0, pop2=1; windows=collect(ts.breakpoints()))
     pi0 = ts.diversity(x0, mode="branch", windows=windows) ./ 2
     pi1 = ts.diversity(x1, mode="branch", windows=windows) ./ 2
     dxy = ts.divergence([x0, x1], mode="branch", windows=windows) ./ 2
-    windows, pi0, pi1, dxy
+    windows[2:end], pi0, pi1, dxy
 end

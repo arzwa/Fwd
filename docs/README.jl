@@ -36,7 +36,7 @@ end
 
 
 # ## Barrier locus/loci
-# 
+ 
 # We'll simulate a haploid pair of populations.
 NA = 100
 NB = 500
