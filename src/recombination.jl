@@ -11,7 +11,12 @@ struct LinearMap{T} <: RecombinationMap
     maplength :: T  # maplength in Morgans, i.e. expected # of crossovers
 end
 
-maplength(m::LinearMap) = m.maplength
+struct LinearPhysMap{T} <: RecombinationMap
+    maplength :: T
+    physlength :: Int
+end
+
+maplength(m) = m.maplength
 
 # Haldane's mapping function
 # distance -> recombination rate
@@ -28,6 +33,12 @@ function rand_breakpoints(rng, m::LinearMap)
     n = rand(rng, Poisson(L))
     bps = rand(rng, n) .* L
     [sort!(bps) ; L]
+end
+
+function rand_breakpoints(rng, m::LinearPhysMap)
+    n = rand(rng, Poisson(maplength(m)))
+    bps = sample(rng, 1:m.physlength-1, n, replace=false)
+    [sort!(bps); m.physlength]
 end
 
 # `recombine!` is a general function, different sorts of genetic map should

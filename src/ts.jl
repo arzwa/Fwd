@@ -123,7 +123,7 @@ function simplify(
     Q = MutableBinaryMinHeap{Segment{T,V}}()
     for u in smpl
         v = addnode!(nnodes, nchildren, nodes[u])
-        A[u] = [Segment(v, 0.0, L)]
+        A[u] = [Segment(v, zero(L), L)]
     end
     # now nnodes consists of the sample nodes, ordered by their new id's
     # A contains at the index of the old id's the associated active

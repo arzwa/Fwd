@@ -4,23 +4,30 @@ using Barriers
 using Plots, ProgressMeter, WrightDistribution
 tab(NA, m) = 1/m + NA
 tb(NA, NB, m) = NB*(3 + 2m*NA)/(1 + 2m*NB)
+function fst(NA, NB, m) 
+    pb = tab(NA, m)
+    pw = NA + tb(NA, NB, m)
+    (pb - pw)/(pb + pw)
+end
 
 NA = 500
 NB = 500
-Ls = 0.4
+Ls = 0.2
 L  = 35
 s  = Ls/L
-C  = 1.0
-m  = 0.5*s
+C  = 1.0   # 1M
+G  = 10^8  # 100Mb  -> 1cM/Mb
+m  = 0.2*s
 @info NB*s
 u  = s/200
 rng = Random.seed!(282)
 dfe = Exponential(s)
-xs = cumsum(rand(rng, Dirichlet(L+1,10.0)))[1:end-1] .* C
+ys = cumsum(rand(rng, Dirichlet(L+1,10.0)))[1:end-1] .* C
+xs = ceil.(Int64, ys .* (G/C))
 AA = Architecture([Fwd.HaploidBiLocus(0.0, 0.0) for _=1:L], xs)
 AB = Architecture([Fwd.HaploidBiLocus(-rand(rng, dfe), u) for _=1:L], xs)
 ss = [-AB.loci[i].s for i=1:L]
-R  = LinearMap(C)
+R  = Fwd.LinearPhysMap(C, G)
 xA = [ ones(Bool, L) for _=1:NA]
 xB = [zeros(Bool, L) for _=1:NB]
 nA = collect(1:NA)
@@ -28,14 +35,12 @@ nB = collect(1:NB) .+ NA
 popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, recmap=R, x=xA, nodes=nA)
 popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, recmap=R, x=xB, nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
-ngen = 5*10^5
-pop = deepcopy(mpop)
-ts = Fwd.init_ts(pop, C) 
+ngen = 10^5
 model = let
     recmap = Barriers.linearmap(100, C)
     loci = [Barriers.DiploidLocus(2ss[i], 0.5, u) for i=1:L]
-    R = [Fwd.recrate(abs(xs[i] - xs[j])) for i=1:L, j=1:L]
-    A = Barriers.Architecture(loci, xs, R)
+    R = [Fwd.recrate(abs(ys[i] - ys[j])) for i=1:L, j=1:L]
+    A = Barriers.Architecture(loci, ys, R)
     M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
     EM = Barriers.Equilibrium(M)
 end
@@ -43,24 +48,77 @@ mx = 0:0.002:C
 plot(mx, x->tab(NA, Barriers.me(model,x)), 
     color=:black, ylim=(1000,10ngen), yscale=:log10)
 hline!([ngen], ls=:dash)
-AM = AeschbacherModel(m, [AB.loci[i].s for i=1:L], xs)
+AM = AeschbacherModel(m, [AB.loci[i].s for i=1:L], ys)
 plot!(x->tab(NA, m*Barriers.gff(AM, x)), mx, color=:salmon)
-plot!(twinx(), mx, x->Barriers.me(model,x), 
-    color=:cyan, framestyle=:default)
+plot!(twinx(), mx, map(x->fst(NA, NB, Barriers.me(model,x)), mx), 
+    color=:gray, ylim=(0,1), framestyle=:default)
 
-@showprogress for i=1:ngen
-    pop = Fwd.generation!(rng, pop, ts);
-    if i % 10 == 0 
-        pop, ts = Fwd.simplify!(pop, ts)
+# Simulation
+pop, ts, qs = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop, G)
+    qs=Matrix{Float64}(undef, ngen, L)
+    @showprogress for i=1:ngen
+        pop = Fwd.generation!(rng, pop, ts);
+        qs[i,:] .= mean(pop.popB.x)
+        if i % 50 == 0 
+            pop, ts = Fwd.simplify!(pop, ts)
+        end
     end
+    pop, ts, qs
 end
 
+pts = to_tskit(ts)
+pth = mkpath("data/2025-09-11/")
+pts.dump(joinpath(pth, "ts.ts"))
+serialize(joinpath(pth, "qs.jls"), (xs, ss, qs))
+
+# Visualization
+p̄ = 1 .- vec(mean(qs, dims=1))
+scatter(model.Ep, p̄, color=:black, ms=2)
+plot!(x->x, xlim=(0,1), ylim=(0,1), size=(220,210), 
+    xlabel="\$\\mathbb{E}[p]\$", ylabel="\$\\bar{p}\$")
+
 xx, pa, pb, dab = Fwd.diffdiv(ts)
-plot(xx, dab, line=:steppre, color=:lightgray)
-plot!(mx, x->tab(NA, Barriers.me(model,x)), color=:black, )
-AM = AeschbacherModel(m, [AB.loci[i].s for i=1:L], xs)
-plot!(x->tab(NA, m*Barriers.gff(AM, x)), mx, color=:salmon)
-plot!(size=(900,200), yscale=:log10)
+mes = map(1:length(xx)) do i
+    a = i == 1 ? 0.0 : xx[i-1]
+    b = xx[i]
+    a *= C/G
+    b *= C/G
+    me1 = quadgk(x->Barriers.me(model, x), a, b)[1] ./ (b-a) 
+    me2 = quadgk(x->m*Barriers.gff(AM, x), a, b)[1] ./ (b-a) 
+    me1, me2
+end
+me1 = first.(mes)
+me2 = last.(mes)
+
+p1 = plot(xx, dab, line=:steppre, color=:gray, 
+    alpha=0.4, yscale=:log10, ylabel="\$T_{AB}\$")
+tab1 = map(me->tab(NA, me), me1)
+tab2 = map(me->tab(NA, me), me2)
+plot!(xx, tab1)
+plot!(xx, tab2)
+hline!([ngen], ls=:dash, color=:gray, alpha=0.5)
+ix = findall(x->x>=ngen, dab)
+scatter!(xx[ix], dab[ix], color=:red, ms=2)
+p2 = plot(xx, pb , line=:steppre, color=:gray, alpha=0.4, ylabel="\$T_{B}\$")
+δ = [xx[1]; [xx[i]-xx[i-1] for i=2:length(xx)]]
+#hline!([sum(pb .* δ) / C], color=:black, ls=:dash)
+tb1 = map(me->tb(NA, NB, me), me1)
+tb2 = map(me->tb(NA, NB, me), me2)
+plot!(xx, tb1)
+plot!(xx, tb2)
+plot!(size=(900,200), yscale=:log10, xlabel="map position")
+plot(p1, p2, layout=(2,1), size=(900,400), margin=3Plots.mm)
+
+plot(xx, tab1 .- dab)
+plot!(xx, tab2 .- dab, ylim=(-1e5,1e5), size=(900,200))
+
+xx, pa, pb, dab = Fwd.diffdiv(ts)
+p1 = plot(xx, dab, line=:steppre, color=:gray)
+hline!([ngen])
+plot!(xx, map(me->tab(NA, me), me1))
+plot!(xx, map(me->tab(NA, me), me2))
+plot!(size=(900,200), ylim=(0,ngen*1.2))
+
 
 scatter(mean(pop.popB.x), 1 .- model.Ep, color=:black, ms=2)
 plot!(x->x, color=:gray, size=(210,200))
@@ -97,8 +155,6 @@ plot(x->m*Barriers.gff(AM, x), mx,
     color=:teal, label="approx. 2 (Aeschbacher et al.)")
 plot!(mx, x->Barriers.me(model,x), color=:black, )
 
-pts = to_tskit(ts)
-pts.dump("data/2025-09-09.ts")
 
 # simulate data
 pts = Fwd.tskit.load("data/2025-09-09.ts")

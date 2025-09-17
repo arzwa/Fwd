@@ -20,7 +20,7 @@ fitnesseffect(l::DiploidBiLocus, x, y) = x != y ? l.s01 : (x == 1 ? l.s11 : 0.0)
 
 # This is a model for an asexual stretch of genome, accumulating deleterious
 # mutations with a multiplicative fitness effect. 
-struct PoissonLocus{T}
+struct PoissonLocus{T} <: Locus
     s :: T
     u :: T
 end
