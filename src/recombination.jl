@@ -11,9 +11,14 @@ struct LinearMap{T} <: RecombinationMap
     maplength :: T  # maplength in Morgans, i.e. expected # of crossovers
 end
 
-struct LinearPhysMap{T} <: RecombinationMap
+@with_kw struct LinearPhysMap{T} <: RecombinationMap
     maplength :: T
     physlength :: Int
+    rbp :: T = maplength/physlength   # M/bp
+end
+
+function recrate(m::LinearPhysMap, x, y)
+    recrate(m.rbp * abs(x - y))
 end
 
 maplength(m) = m.maplength
@@ -47,7 +52,8 @@ end
     recombine!(z, breakpoints, x, y, xs)
 
 Recombine `x` and `y` assuming crossover recombination at `breakpoints`,
-assuming the entries of `x` and `y` are at map positions `xs`, write to `z`.
+assuming the entries of `x` and `y` are at map positions `xs` (should be sorted),
+write to `z`.
 
 !!! note: This function is deterministic, for a given set of breakpoints and
 `x` and `y` haplotypes, it will always return the same recombinant haplotype.

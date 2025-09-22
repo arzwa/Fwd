@@ -69,6 +69,7 @@ function generation!(
         # offspring k has mother and father idx[k] and idx[N+k]
         generate_offspring!(rng, pop, ts, ns, k, idx[k], idx[N+k])
     end
+    _x = mutation!(rng, _x, arch)
     reconstruct(pop, x=_x, _x=x, nodes=collect(ns))
 end
 
@@ -79,8 +80,8 @@ function _generate_offspring!(rng, pop, ts, ns, k, p1, p2)
     bps, edges = recombine(rng, nodes[p1], nodes[p2], ns[k], recmap)
     recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
     addedges!(ts, edges)
-    mutations = rand_mutations(rng, arch.mut) 
-    mutation!(pop._x[k], mutations)
+    #mutations = rand_mutations(rng, arch.mut) 
+    #mutation!(pop._x[k], mutations)
 end
 
 function _migrate!(src::W, dest::W, i, k) where W<:WFPopulation

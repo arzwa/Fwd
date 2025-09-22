@@ -18,7 +18,7 @@ const kb = 1_000
 export Gb, Mb, kb
 
 include("architecture.jl")
-export HaploidBiLocus, DiploidBiLocus, Architecture, fitness, logfitness
+export HaploidBiLocus, DiploidBiLocus, PoissonLocus, Architecture, fitness, logfitness 
 
 include("recombination.jl")
 export LinearMap, maplength, rand_breakpoints
