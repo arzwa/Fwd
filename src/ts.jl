@@ -83,13 +83,18 @@ function addedges!(ts::TreeSequence, edges)
     end
 end
 
-function recombine(rng, p1, p2, c, recmap::RecombinationMap)
-    bps = rand_breakpoints(rng, recmap)
+function addedges!(ts::TreeSequence, p1, p2, c, bps)
+    edges = getedges(p1, p2, c, bps)
+    addedges!(ts, edges)
+end
+
+# get a list of edges associated with a new meiotic product `c` from `p1`
+# and `p2` based on a bunch of breakpoints `bps`
+function getedges(p1, p2, c, bps)
     edges = map(enumerate(bps)) do (i,x1)
         x0 = (i == 1 ? zero(x1) : bps[i-1])
         isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
     end
-    bps, edges
 end
 
 # For simplification algorithm
@@ -310,37 +315,37 @@ leaves(ts::TreeSequence, pop) = filter(i->population(ts[i]) == pop, leaves(ts))
 # pop is a collection of node IDs, where index k and N+k give the two
 # haplotypes in individual k
 # XXX for testing, not actually used elsewhere
-function _generation!(rng, pop, ts::TreeSequence{T}, recmap) where T
-    @unpack nodes, edges, children, L = ts
-    n = length(ts.nodes) 
-    N = length(pop)÷2
-    t = nodes[pop[1]] + 1
-    pop′ = [n+i for i=1:2N]
-    for k=1:N
-        # choose parent for first haplotype
-        i = rand(rng, 1:N)
-        eik = _recombine(rng, pop[i], pop[N+i], pop′[k], recmap) 
-        for e in eik
-            addedge!(edges, children, e)
-        end
-        # choose parent for the second haplotype
-        j = rand(rng, 1:N)
-        ejk = _recombine(rng, pop[j], pop[N+j], pop′[N+k], recmap) 
-        for e in ejk
-            addedge!(edges, children, e)
-        end
-    end
-    nodes = vcat(nodes, fill(t,2N))
-    children = vcat(children, [T[] for _=1:2N])
-    pop′, TreeSequence(nodes, edges, children, L, true)
-end
-
-function _recombine(rng, p1, p2, c, recmap::RecombinationMap)
-    bps = rand_breakpoints(rng, recmap)
-    map(enumerate(bps)) do (i,x1)
-        x0 = i == 1 ? zero(x1) : bps[i-1]
-        isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
-    end
-end
+#function _generation!(rng, pop, ts::TreeSequence{T}, recmap) where T
+#    @unpack nodes, edges, children, L = ts
+#    n = length(ts.nodes) 
+#    N = length(pop)÷2
+#    t = nodes[pop[1]] + 1
+#    pop′ = [n+i for i=1:2N]
+#    for k=1:N
+#        # choose parent for first haplotype
+#        i = rand(rng, 1:N)
+#        eik = _recombine(rng, pop[i], pop[N+i], pop′[k], recmap) 
+#        for e in eik
+#            addedge!(edges, children, e)
+#        end
+#        # choose parent for the second haplotype
+#        j = rand(rng, 1:N)
+#        ejk = _recombine(rng, pop[j], pop[N+j], pop′[N+k], recmap) 
+#        for e in ejk
+#            addedge!(edges, children, e)
+#        end
+#    end
+#    nodes = vcat(nodes, fill(t,2N))
+#    children = vcat(children, [T[] for _=1:2N])
+#    pop′, TreeSequence(nodes, edges, children, L, true)
+#end
+#
+#function _recombine(rng, p1, p2, c, recmap::RecombinationMap)
+#    bps = rand_breakpoints(rng, recmap)
+#    map(enumerate(bps)) do (i,x1)
+#        x0 = i == 1 ? zero(x1) : bps[i-1]
+#        isodd(i) ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
+#    end
+#end
 
 

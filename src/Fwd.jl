@@ -18,7 +18,9 @@ const kb = 1_000
 export Gb, Mb, kb
 
 include("architecture.jl")
-export HaploidBiLocus, DiploidBiLocus, PoissonLocus, Architecture, fitness, logfitness 
+include("gpm.jl")
+export BiAllelic, IntAllelic, HaploidLocus, HaploidTwoLocus
+export Architecture, GPMap
 
 include("recombination.jl")
 export LinearMap, maplength, rand_breakpoints
@@ -31,6 +33,9 @@ export WFPopulation, Haploid, Diploid, generation!, init_ts
 
 include("twopop.jl")
 export TwoPopOneWay
+
+#include("metapop.jl")
+#export MetaPop
 
 include("utils.jl")
 

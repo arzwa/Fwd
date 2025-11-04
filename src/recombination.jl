@@ -77,15 +77,16 @@ function recombine!(z, breakpoints, x, y, xs, onx=true)
     return z
 end
 
-function recombination!(target, rng, recmap, x1, x2, arch)
-    breakpoints = rand_breakpoints(rng, recmap)
-    recombine!(target, breakpoints, x1, x2, arch.xs)
-end
-
-function recombination!(target, rng, recmap::Unlinked, x1, x2, _)
-    for i in 1:length(target)
-        target[i] = rand(rng) < 0.5 ? x1[i] : x2[i] 
-    end
-end
+# not used
+#function recombination!(target, rng, recmap, x1, x2, arch)
+#    breakpoints = rand_breakpoints(rng, recmap)
+#    recombine!(target, breakpoints, x1, x2, arch.xs)
+#end
+#
+#function recombination!(target, rng, recmap::Unlinked, x1, x2, _)
+#    for i in 1:length(target)
+#        target[i] = rand(rng) < 0.5 ? x1[i] : x2[i] 
+#    end
+#end
 
 

@@ -1,4 +1,18 @@
 
+function simulation!(seed, pop, C, L, ngen; simplify=100)
+    rng = Random.seed!(seed)
+    qs = Matrix{Float64}(undef, ngen, L)
+    ts = Fwd.init_ts(pop, C)
+    @showprogress for i=1:ngen
+        pop = Fwd.generation!(rng, pop, ts);
+        qs[i,:] .= mean(pop.popB.x)
+        if i % simplify == 0 
+            pop, ts = Fwd.simplify!(pop, ts)
+        end
+    end
+    pop, ts, qs
+end
+
 function summarize_wins(xs, ys)
    breaks = sort(union(xs...))
    n = length(breaks)
@@ -38,4 +52,36 @@ function diffdiv(ts, pop1=0, pop2=1; windows=collect(ts.breakpoints()))
     pi1 = ts.diversity(x1, mode="branch", windows=windows) ./ 2
     dxy = ts.divergence([x0, x1], mode="branch", windows=windows) ./ 2
     windows[2:end], pi0, pi1, dxy
+end
+
+function single_barrier_haploid(m, s, u, C, x, NA, NB)
+    AA  = Architecture([BiAllelic(0.0)], [x])
+    AB  = Architecture([BiAllelic(u  )], [x])
+    MA  = GPMap([HaploidLocus(0.0, 1)])
+    MB  = GPMap([HaploidLocus(-s , 1)])
+    R   = LinearMap(C)
+    nA = collect(1:NA)
+    nB = collect(1:NB) .+ NA
+    xA = [ ones(Int, 1) for _=1:NA]
+    xB = [zeros(Int, 1) for _=1:NB]
+    popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, recmap=R, x=xA, nodes=nA)
+    popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, recmap=R, x=xB, nodes=nB)
+    mpop = Fwd.TwoPopOneWay(m, popA, popB)
+end
+
+"""
+    hmrecrate(xs::Vector)
+
+Calculate harmonic mean recombination rate given a bunch of map positions.
+"""
+function hmrecrate(xs)
+    rs  = Fwd.rec_matrix(xs)
+    rhm = 0.0
+    L = length(xs)
+    for i=2:L
+        for j=1:i-1
+            rhm += 1/rs[i,j]
+        end
+    end
+    (L*(L-1)/2)/rhm
 end

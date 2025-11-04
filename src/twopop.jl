@@ -19,7 +19,7 @@ active_nodes(m::TwoPopOneWay) = [m.popA.nodes ; m.popB.nodes]
     migration!(rng, metapop)
 
 !!! note: This migration function implements migration-as-copying, i.e. a
-proportion `m` of the B population is replaced by indviduals from A, but A
+proportion `m` of the B population is replaced by individuals from A, but A
 is unaffected.  (biologically this could correspond to sending out asexual
 propagules -- although this is more relevant for haplodiplontic cryptogams
 etc. than for diploids).
@@ -31,7 +31,7 @@ function migration!(rng, metapop::TwoPopOneWay)
     nmig = min(NB, rand(rng, Poisson(m*NB)))
     idx = sample(rng, 1:NA, nmig) 
     for k=1:nmig
-        migrate!(popA, popB, idx[k], k)
+        migrate_copy!(popA, popB, idx[k], k)
     end
 end
 # Other possibilities for migration:
@@ -44,6 +44,14 @@ function generation!(rng, metapop::TwoPopOneWay, ts::TreeSequence)
     @unpack popA, popB = metapop
     popA_ = generation!(rng, popA, ts, popid=1)
     popB_ = generation!(rng, popB, ts, popid=2)
+    reconstruct(metapop, popA=popA_, popB=popB_)
+end
+
+function generation!(rng, metapop::TwoPopOneWay)
+    migration!(rng, metapop)
+    @unpack popA, popB = metapop
+    popA_ = generation!(rng, popA)
+    popB_ = generation!(rng, popB)
     reconstruct(metapop, popA=popA_, popB=popB_)
 end
 
