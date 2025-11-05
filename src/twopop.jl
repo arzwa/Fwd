@@ -1,3 +1,5 @@
+# XXX This is superseded by MetaPop, which is not less efficient.
+
 # NOTE: everything is written so that any population type could be used
 # given that it implements the necessary functions for (1) ts
 # initialisation, (2) migration, (3) generation.

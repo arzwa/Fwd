@@ -42,7 +42,7 @@ function theights(ts)
     xs[2:end], th[1:end-1]
 end
 
-diffdiv(ts::TreeSequence, args...; kwargs...) = diffdiv(to_tskit(ts), args...; kwargs...)
+diffdiv(ts::TreeSequence, p1, p2; kwargs...) = diffdiv(to_tskit(ts), p1-1, p2-1; kwargs...)
 
 function diffdiv(ts, pop1=0, pop2=1; windows=collect(ts.breakpoints()))
     ts.simplify(ts.samples())

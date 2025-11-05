@@ -17,7 +17,7 @@ pops = [
     WFPopulation(N=1, arch=AA, gpm=GA, recmap=R, ploidy=Haploid(), x=[ ones(Bool,1)]),
     WFPopulation(N=N, arch=AB, gpm=GB, recmap=R, ploidy=Haploid(), x=[zeros(Bool,1) for _=1:N]) 
 ]
-m = s/2
+m = s/6
 pop = Fwd.MetaPop(pops, [0. m; 0. 0.])
 
 ngen = 10000
@@ -42,6 +42,7 @@ pops = [
     WFPopulation(N=1, arch=AA, gpm=GA, recmap=R, ploidy=Diploid(), x=[ ones(Bool,1) for _=1:2]),
     WFPopulation(N=N, arch=AB, gpm=GB, recmap=R, ploidy=Diploid(), x=[zeros(Bool,1) for _=1:2N]) 
 ]
+m = s/3
 pop = MetaPop(pops, [0. m; 0. 0.])
 ngen = 10000
 qs = Vector{Float64}(undef, ngen)
@@ -49,3 +50,9 @@ qs = Vector{Float64}(undef, ngen)
     pop = generation!(rng, pop)
     qs[i] = (sum(pop[2].x) / 2N)[1]
 end
+
+plot(qs, color=:lightgray, alpha=0.5)
+#hline!([u/s])
+hline!([mean(qs)])
+q̄ = mean(Wright(2N*s, 2N*(m+u), 2N*u, 0.5))
+hline!([q̄])

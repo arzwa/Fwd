@@ -26,23 +26,28 @@ _migrants(metapop::MetaPop{<:WFPopulation{Diploid,X}}) where X = Migrant{Tuple{I
 # since that would allow back-and-forth migration in one gen etc.)
 function migration!(rng, metapop)
     @unpack P, M = metapop
+    # We have to first collect the migrants ...
     migrants = _migrants(metapop)
-    # We have to first collect the migrants
     for i=1:length(P)
         # migration into i
         Ni = P[i].N
+        k0 = 1
         for j=1:length(P)
             i == j && continue
             M[j,i] == 0. && continue
             Nj = P[j].N
             nmig = min(Ni, rand(rng, Poisson(M[j,i]*Ni)))
             idx = sample(rng, 1:Nj, nmig) 
-            for k=1:nmig
-                push!(migrants, 
-                    Migrant(i, k, getnodes(P[j], idx[k]), getcopy(P[j], idx[k])))
+            for (l,k) = enumerate(k0:k0+nmig-1)
+                # k is the index the migrant will get in i
+                # idx[l] is the index of the migrant source individual in j 
+                mig = Migrant(i, k, getnodes(P[j], idx[l]), getcopy(P[j], idx[l]))
+                push!(migrants, mig) 
             end
+            k0 += nmig
         end
     end
+    # ... and then execute migration.
     for mig in migrants
         _migrate!(P[mig.pop], mig)
     end
