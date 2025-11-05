@@ -19,9 +19,6 @@ pops = [
 ]
 m = s/2
 pop = Fwd.MetaPop(pops, [0. m; 0. 0.])
-pop = Fwd.migration!(rng, pop)
-
-pop = Fwd.generation!(rng, pop)
 
 ngen = 10000
 qs = Vector{Float64}(undef, ngen)
@@ -36,3 +33,19 @@ hline!([mean(qs)])
 q̄ = mean(Wright(2N*s, N*(m+u), N*u, 0.5))
 hline!([q̄])
 
+
+GA = GPMap([Fwd.DiploidLocus(0., 0., 1)])
+GB = GPMap([Fwd.DiploidLocus(-0.5s, -s, 1)])
+AA = Architecture([BiAllelic(0.)], [0.])
+AB = Architecture([BiAllelic(u )], [0.])
+pops = [
+    WFPopulation(N=1, arch=AA, gpm=GA, recmap=R, ploidy=Diploid(), x=[ ones(Bool,1) for _=1:2]),
+    WFPopulation(N=N, arch=AB, gpm=GB, recmap=R, ploidy=Diploid(), x=[zeros(Bool,1) for _=1:2N]) 
+]
+pop = MetaPop(pops, [0. m; 0. 0.])
+ngen = 10000
+qs = Vector{Float64}(undef, ngen)
+@showprogress for i=1:ngen
+    pop = generation!(rng, pop)
+    qs[i] = (sum(pop[2].x) / 2N)[1]
+end

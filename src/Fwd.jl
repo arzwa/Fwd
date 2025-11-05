@@ -34,8 +34,8 @@ export WFPopulation, Haploid, Diploid, generation!, init_ts
 include("twopop.jl")
 export TwoPopOneWay
 
-#include("metapop.jl")
-#export MetaPop
+include("metapop.jl")
+export MetaPop
 
 include("utils.jl")
 

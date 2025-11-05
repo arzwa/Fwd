@@ -46,8 +46,8 @@ diffdiv(ts::TreeSequence, args...; kwargs...) = diffdiv(to_tskit(ts), args...; k
 
 function diffdiv(ts, pop1=0, pop2=1; windows=collect(ts.breakpoints()))
     ts.simplify(ts.samples())
-    x0 = ts.samples(population=0)
-    x1 = ts.samples(population=1)
+    x0 = ts.samples(population=pop1)
+    x1 = ts.samples(population=pop2)
     pi0 = ts.diversity(x0, mode="branch", windows=windows) ./ 2
     pi1 = ts.diversity(x1, mode="branch", windows=windows) ./ 2
     dxy = ts.divergence([x0, x1], mode="branch", windows=windows) ./ 2

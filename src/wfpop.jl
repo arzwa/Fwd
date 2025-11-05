@@ -27,6 +27,10 @@ end
 # Indexing yields an individual's genome
 Base.getindex(pop::WFPopulation{Haploid}, i) = pop.x[i]
 Base.getindex(pop::WFPopulation{Diploid}, i) = (pop.x[i], pop.x[pop.N + i])
+getnodes(pop::WFPopulation{Haploid}, i) = pop.nodes[i]
+getnodes(pop::WFPopulation{Diploid}, i) = (pop.nodes[i], pop.nodes[pop.N+i])
+getcopy(pop::WFPopulation{Haploid}, i) = copy(pop.x[i])
+getcopy(pop::WFPopulation{Diploid}, i) = (copy(pop.x[i]), copy(pop.x[pop.N+i]))
 
 ploidy(pop::WFPopulation) = _ploidy(pop.ploidy)
 nhaplotypes(pop::WFPopulation) = pop.N*ploidy(pop)

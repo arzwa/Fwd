@@ -29,6 +29,16 @@ struct HaploidLocus{T} <: Component
 end
 eval_component(c::HaploidLocus, x) = c.s*x[c.i]
 
+struct DiploidLocus{T} <: Component
+    w01 :: T
+    w11 :: T
+    i :: Int
+end
+function eval_component(c::DiploidLocus, xy)
+    x, y = xy
+    c.w01*(x[c.i] != y[c.i]) + c.w11*(x[c.i] == y[c.i] == 1)
+end
+
 # Two locus system
 struct HaploidTwoLocus{T} <: Component
     s01 :: T

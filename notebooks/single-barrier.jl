@@ -24,6 +24,7 @@ popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, recmap=R, x=xB, nod
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
 ngen = 10^5
 
+rng = Random.seed!(22)
 pop, ts, qs = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop, C)
     qs = Matrix{Float64}(undef, ngen, 1)
     @showprogress for i=1:ngen
@@ -42,6 +43,32 @@ plot!(x->pdf(Wright(-2NB*s, NB*u, NB*(u + m), 0.5), 1-x))
 x, ta, tb, tab = Fwd.diffdiv(ts)
 plot(x, tab)
 
+# With MetaPop
+popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, recmap=R, x=xA, nodes=nA)
+popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, recmap=R, x=xB, nodes=nB)
+mpop = MetaPop([popA, popB], [0.0 m; 0.0 0.0])
+ngen = 10^5
+
+rng = Random.seed!(28)
+pop2, ts2, qs2 = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop, C)
+    qs = Matrix{Float64}(undef, ngen, 1)
+    @showprogress for i=1:ngen
+        pop = Fwd.generation!(rng, pop, ts);
+        qs[i,:] .= mean(pop[2].x)
+        if i % 50 == 0 
+            pop, ts = Fwd.simplify!(pop, ts)
+        end
+    end
+    pop, ts, qs
+end
+
+stephist(vec(qs2), norm=true, bins=0:0.02:1)
+plot!(x->pdf(Wright(-2NB*s, NB*u, NB*(u + m), 0.5), 1-x))  
+
+x, ta, tb, tab = Fwd.diffdiv(ts)
+plot(x, tab)
+x, ta, tb, tab = Fwd.diffdiv(ts2)
+plot!(x, tab)
 
 # Check the simplified ts  
 @info length(filter(x->x.time == 0, ts.nodes))
