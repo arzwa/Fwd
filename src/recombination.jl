@@ -4,22 +4,43 @@ abstract type RecombinationMap end
 # for unlinked loci automatically, but not sure how to sample breakpoints
 # efficiently in general.
 
-struct Unlinked <: RecombinationMap end
-maplength(m::Unlinked) = Inf
-
 struct LinearMap{T} <: RecombinationMap
     maplength :: T  # maplength in Morgans, i.e. expected # of crossovers
 end
+Base.length(m::LinearMap) = m.maplength
 
 @with_kw struct LinearPhysMap{T} <: RecombinationMap
     maplength :: T
     physlength :: Int
     rbp :: T = maplength/physlength   # M/bp
 end
+Base.length(m::LinearPhysMap) = m.physlength
 
 function recrate(m::LinearPhysMap, x, y)
     recrate(m.rbp * abs(x - y))
 end
+
+"""
+    Chromosomes
+
+A genetic map consisting of multiple chromosomes. We assume that loci are
+given map positions along the genome as if chromosomes were lined up one
+after another. For instance, if we have a genetic map defined by
+```
+Chromosomes([LinearMap(0.7), LinearMap(0.3)])
+```
+A locus at map position 0.1 on the second chromosome should have coordinate 
+in an `Architecture` object `x=0.8`.
+
+To model a set of `L` unlinked loci, use
+```
+Chromosomes([LinearPhysMap(0.0, 1, 0.0) for _=1:L])
+```
+and give 
+"""
+struct Chromosomes{M<:RecombinationMap} <: RecombinationMap 
+    maps :: Vector{M}
+end    
 
 maplength(m) = m.maplength
 
@@ -46,6 +67,23 @@ function rand_breakpoints(rng, m::LinearPhysMap)
     [sort!(bps); m.physlength]
 end
 
+function rand_breakpoints(rng, m::Chromosomes)
+    C = 0.0
+    bps = map(m.maps) do recmap
+        bps = rand_breakpoints(rng, recmap)
+        bps .+= C
+        C += length(recmap)
+        bps
+    end
+    for chrom in bps[1:end-1]
+        rand(rng) < 0.5 && pop!(chrom)
+        # the last entry for each chromosome is the chromosome endpoint,
+        # if we keep it among breakpoints, there's a recombination between
+        # unlinked chromosomes, if we remove it, there is no recombination.
+    end
+    vcat(bps...)
+end
+
 # `recombine!` is a general function, different sorts of genetic map should
 # implement their specific `rand_breakpoints` function. 
 """
@@ -61,7 +99,7 @@ To obtain a random recombinant haplotype for a given set of brekapoints and
 haplotype (i.e. a random pick of the two recombinant haplotypes), one should
 randomize the order of the `x` and `y` arguments.
 """
-function recombine!(z, breakpoints, x, y, xs, onx=true)
+function recombine!(z, breakpoints, x, y, xs, onx=true) 
     length(z) == 0 && return
     i   = 1
     for bp in breakpoints
@@ -76,17 +114,4 @@ function recombine!(z, breakpoints, x, y, xs, onx=true)
     z[i:end] .= onx ? x[i:end] : y[i:end]
     return z
 end
-
-# not used
-#function recombination!(target, rng, recmap, x1, x2, arch)
-#    breakpoints = rand_breakpoints(rng, recmap)
-#    recombine!(target, breakpoints, x1, x2, arch.xs)
-#end
-#
-#function recombination!(target, rng, recmap::Unlinked, x1, x2, _)
-#    for i in 1:length(target)
-#        target[i] = rand(rng) < 0.5 ? x1[i] : x2[i] 
-#    end
-#end
-
 

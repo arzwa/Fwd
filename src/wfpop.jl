@@ -133,6 +133,9 @@ function _generate_offspring!(rng, pop, k, p1, p2)
     (p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
     bps = rand_breakpoints(rng, recmap)
     recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
+    # deciding p1, p2 switching is not necessary, could give rand() < 0.5
+    # as last argument to recombine!... but perhaps more transparent (also
+    # compare with tsrecording version...)
 end
 
 function _migrate_copy!(src::W, dest::W, i, k) where W<:WFPopulation
