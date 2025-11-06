@@ -174,8 +174,8 @@ plot!(xlabel="map position", margin=4Plots.mm,
 
 
 # With a second continent, the DMI does constitute a barrier I think
-s = 0.1
-m = 0.005
+s = 0.05
+m = 0.001
 u = s/1000
 r = 10m
 C = 0.2 
@@ -183,14 +183,19 @@ c = Fwd.distance(r)
 xs = [C/2-c/2, C/2+c/2]
 AA = Architecture([BiAllelic(0.) for i=1:2], xs)
 AB = Architecture([BiAllelic( u) for i=1:2], xs)
-M = GPMap([HaploidTwoLocus(-s, 0.0, -s, 1, 2)])
+M = GPMap([HaploidTwoLocus(0.0, 0.0, -s, 1, 2)])
 R = LinearMap(C)
 
 states = [[0,0],[0,1],[1,0],[1,1]]
 Fwd.eval_component.(Ref(M[1]), states)
 
+function hapfreq(pop)
+    pm = proportionmap(pop.x)
+    [haskey(pm, x) ? pm[x] : 0.0 for x in states]
+end
+
 # Population model
-nrep = 20
+nrep = 100
 res = map(1:nrep) do _
     NA = 1
     NB = 500
@@ -204,17 +209,15 @@ res = map(1:nrep) do _
     popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=M, recmap=R, x=xA, nodes=nA)
     popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=M, recmap=R, x=xB, nodes=nB)
     popC = WFPopulation(ploidy=Haploid(), N=NC, arch=AA, gpm=M, recmap=R, x=xC, nodes=nC)
-    mpop = MetaPop([popA, popB, popC], [0.0 m 0.0 ; 0.0 0.0 0.0; 0.0 m 0.0])
+    mpop = MetaPop([popA, popB, popC], [0.0 m 0.0 ; 0.0 0.0 0.0; 0.0 5m 0.0])
     ts = init_ts(mpop, C)
-    pm = proportionmap(mpop[2].x)
-    res = [[haskey(pm, x) ? pm[x] : 0.0 for x in states]]
+    res = [hapfreq(popB)]
     @showprogress for i=1:10000
         mpop = Fwd.generation!(Random.default_rng(), mpop, ts)
         if i % 100 == 0
             mpop, ts = Fwd.simplify!(mpop, ts)
         end
-        pm = proportionmap(mpop[2].x)
-        push!(res, [haskey(pm, x) ? pm[x] : 0.0 for x in states])
+        push!(res, hapfreq(mpop[2]))
     end
     res, ts
 end
@@ -223,8 +226,8 @@ plot(permutedims(hcat(res[10][1]...)),
     label=reshape(join.(states), 1,4), legend=:outertopright)
 
 xx = map(last.(res)) do ts
-    x1, _, _, dab1 = Fwd.diffdiv(ts, 0, 1)
-    x2, _, _, dab2 = Fwd.diffdiv(ts, 2, 1)
+    x1, _, _, dab1 = Fwd.diffdiv(ts, 1, 2)
+    x2, _, _, dab2 = Fwd.diffdiv(ts, 3, 2)
     x1, dab1, x2, dab2
 end
 
