@@ -1,5 +1,5 @@
 # Simulation routines...
-simulate!(pop::AbstractPop, args...) = simulate!(default_rng(), args...)
+simulate!(pop::AbstractPop, args...) = simulate!(Random.default_rng(), args...)
 function simulate!(rng::AbstractRNG, pop, ts, ngen; simplify=100)
     @showprogress for t=1:ngen
         pop = Fwd.generation!(rng, pop, ts);

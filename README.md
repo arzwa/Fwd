@@ -145,6 +145,7 @@ stephist(q, norm=true, color=:gray, fill=true, fillalpha=0.2, label="simulation"
 plot!(0:0.001:1, x->pdf(d,1-x), label="diffusion theory", xlabel="\$q\$", ylabel="density")
 ````
 
+
 ![](docs/pl1.png)
 
 get cross-population coalescence times
@@ -158,7 +159,57 @@ plot!(x->1/(m*gff(x, C/2, s)), ylim=(0,ngen), color=:black, lw=2,
     ls=:dash, xlabel="\$x\$", ylabel="\$T_{AB}\$")
 ````
 
+
 ![](docs/pl2.png)
+
+## Multilocus cline
+
+$D$ demes along a 1D habitat in which $L$ alleles are divergently
+selected across the two halves.
+
+````julia
+D = 20
+N = 50
+m = 0.1
+L = 10
+C = 0.5
+xs = C/2L:C/L:(C-C/2L)
+s = 0.02
+arch = Architecture([BiAllelic(s/200) for _=1:L], xs, LinearMap(C))
+Ps = map(1:D) do d
+    sgn = d > D÷2 ? 1 : -1
+    x0 = d > D÷2 ? [ones(Bool, L) for _=1:N] : [zeros(Bool, L) for _=1:N]
+    Φd = GPMap([HaploidLocus(sgn*s, i) for i=1:L])
+    nd = collect((d*N+1):((d+1)*N))
+    Pd = WFPopulation(ploidy=Haploid(), gpm=Φd, N=N, arch=arch, x=x0, nodes=nd)
+end
+M = zeros(D,D)
+for i=1:D
+    i > 1 && (M[i,i-1] = m/2)
+    i < D && (M[i,i+1] = m/2)
+end
+pop = MetaPop(Ps, M)
+rng = Random.seed!(89)
+pop, ts = simulate!(rng, pop, init_ts(pop), 20000);
+````
+
+
+Graph the allele frequencies of teh selected loci at the end of the
+simulation and show the mean coalescence times between the leftmost and
+rightmost deme.
+
+````julia
+qs = permutedims(hcat([mean(pop[i].x) for i=1:D]...))
+P1 = plot(qs, ylabel="\$q\$", xlabel="deme", marker=true, ms=2)
+xx, _, _, tab = diffdiv(ts, 1, D)
+P2 = plot(xx, tab, line=:steppost, xlabel="map position", ylabel="\$T_{1,$D}\$", color=:gray)
+vline!(xs)
+plot(P1, P2, size=(600,220), margin=3Plots.mm)
+````
+
+![](docs/pl3.png)
+
+The barrier effect is nicely demonstrated.
 
 ---
 
