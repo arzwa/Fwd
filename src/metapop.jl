@@ -3,7 +3,7 @@
 # proportion of migrants from 1 into 2 (forward in time), meaning that an
 # expected m₁₂ individuals from population 2 are replaced by clones copied
 # from 1.
-struct MetaPop{Pop,T}
+struct MetaPop{Pop,T} <: AbstractPop
     P :: Vector{Pop}
     M :: Matrix{T} 
 end
@@ -84,12 +84,12 @@ function generation!(rng, metapop::MetaPop)
     reconstruct(metapop, P=_P)
 end
 
-function init_ts(pop::MetaPop, L)
-    tss = map(i->init_ts(pop[i], L, popid=i), 1:length(pop))
+function init_ts(pop::MetaPop)
+    tss = map(i->init_ts(pop[i], popid=i), 1:length(pop))
     ns = mapreduce(ts->ts.nodes, vcat, tss)
     es = tss[1].edges  # empty anyhow
     cs = mapreduce(ts->ts.children, vcat, tss)
-    TreeSequence(ns, es, cs, L, true)
+    TreeSequence(ns, es, cs, tss[1].L, true)
 end
 
 function simplify!(pop::MetaPop, ts::TreeSequence)

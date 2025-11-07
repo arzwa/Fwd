@@ -10,9 +10,11 @@ struct IntAllelic{T} <: Locus
     u :: T
 end
 
-struct Architecture{L,V<:AbstractVector}
-    loci :: Vector{L}  # loci
-    xs   :: V  # map locations
+# XXX should we add the recombination map as a field?
+struct Architecture{L,V<:AbstractVector,R<:RecombinationMap}
+    loci   :: Vector{L}  # loci
+    xs     :: V  # map locations
+    recmap :: R
 end
 Base.length(arch::Architecture) = length(arch.loci)
 Base.getindex(arch::Architecture, i) = arch.loci[i]

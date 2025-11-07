@@ -1,16 +1,25 @@
-
-function simulation!(seed, pop, C, L, ngen; simplify=100)
-    rng = Random.seed!(seed)
-    qs = Matrix{Float64}(undef, ngen, L)
-    ts = Fwd.init_ts(pop, C)
-    @showprogress for i=1:ngen
+# Simulation routines...
+simulate!(pop::AbstractPop, args...) = simulate!(default_rng(), args...)
+function simulate!(rng::AbstractRNG, pop, ts, ngen; simplify=100)
+    @showprogress for t=1:ngen
         pop = Fwd.generation!(rng, pop, ts);
-        qs[i,:] .= mean(pop.popB.x)
-        if i % simplify == 0 
+        if t % simplify == 0 
             pop, ts = Fwd.simplify!(pop, ts)
         end
     end
-    pop, ts, qs
+    return pop, ts
+end
+
+function simulate!(rng::AbstractRNG, pop, ts, ngen, cb::Function; simplify=100)
+    ys = [cb(pop)]
+    @showprogress for t=1:ngen
+        pop = Fwd.generation!(rng, pop, ts);
+        push!(ys, cb(pop))
+        if t % simplify == 0 
+            pop, ts = Fwd.simplify!(pop, ts)
+        end
+    end
+    return pop, ts, ys
 end
 
 function summarize_wins(xs, ys)
@@ -42,7 +51,7 @@ function theights(ts)
     xs[2:end], th[1:end-1]
 end
 
-diffdiv(ts::TreeSequence, p1, p2; kwargs...) = diffdiv(to_tskit(ts), p1-1, p2-1; kwargs...)
+diffdiv(ts::TreeSequence, p1=1, p2=2; kwargs...) = diffdiv(to_tskit(ts), p1-1, p2-1; kwargs...)
 
 function diffdiv(ts, pop1=0, pop2=1; windows=collect(ts.breakpoints()))
     ts.simplify(ts.samples())

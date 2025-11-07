@@ -6,6 +6,7 @@ struct Diploid <: Ploid end
 _ploidy(_::Haploid) = 1
 _ploidy(_::Diploid) = 2
 
+abstract type AbstractPop end
 """
     WFPopulation
 
@@ -13,11 +14,10 @@ The idea is that at any time, the field `x` has the current haplotypes in
 the population.  `_x` serves as a preallocated container in which we store
 the offspring while in a generation loop.
 """
-@with_kw struct WFPopulation{P<:Ploid,H,T,A<:Architecture,G,R<:RecombinationMap}
+@with_kw struct WFPopulation{P<:Ploid,H,T,A<:Architecture,G}  <: AbstractPop
     N      :: Int
     arch   :: A 
     gpm    :: G = GPMap()
-    recmap :: R 
     ploidy :: P
     nodes  :: Vector{T} = collect(1:_ploidy(ploidy)*N)  # tree sequence nodes
     x      :: Vector{H} = [Bool[] for _=1:_ploidy(ploidy)*N]  # haplotypes
@@ -35,7 +35,8 @@ getcopy(pop::WFPopulation{Diploid}, i) = (copy(pop.x[i]), copy(pop.x[pop.N+i]))
 ploidy(pop::WFPopulation) = _ploidy(pop.ploidy)
 nhaplotypes(pop::WFPopulation) = pop.N*ploidy(pop)
 
-init_ts(pop::WFPopulation, L; popid=0) = init_ts(nhaplotypes(pop), L, popid=popid)
+init_ts(pop::WFPopulation; popid=0) = init_ts(nhaplotypes(pop), 
+    length(pop.arch.recmap), popid=popid)
 
 #eval_fitness(pop::WFPopulation) = map(i->fitness(pop.arch, pop[i]), 1:pop.N)
 eval_fitness(pop::WFPopulation) = map(i->exp(phenotype(pop.gpm, pop[i])), 1:pop.N)
@@ -74,7 +75,7 @@ function generation!(
         idx::Vector{Int},
         ts::TreeSequence,
         popid=0)   # XXX don't like the `popid`
-    @unpack N, x, _x, arch, recmap, nodes = pop
+    @unpack N, x, _x, arch, nodes = pop
     @assert length(idx) == 2N  "Biparental reproduction" 
     # new nodes to ts
     exnode = ts.nodes[nodes[1]]
@@ -88,7 +89,7 @@ function generation!(
 end
 
 function generation!(rng::AbstractRNG, pop::WFPopulation, idx::Vector{Int})
-    @unpack N, x, _x, arch, recmap, nodes = pop
+    @unpack N, x, _x, arch, nodes = pop
     @assert length(idx) == 2N  "Biparental reproduction" 
     for k=1:N  # offspring individual k
         # offspring k has mother and father idx[k] and idx[N+k]
@@ -120,7 +121,7 @@ end
 # These are haplotype level functions
 # with ts recording
 function _generate_offspring!(rng, pop, k, p1, p2, ts::TreeSequence, ns)
-    @unpack arch, recmap, nodes = pop 
+    @unpack arch, nodes = pop; @unpack recmap = arch
     (p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
     bps = rand_breakpoints(rng, recmap)
     recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
@@ -129,7 +130,7 @@ end
 
 # without ts recording
 function _generate_offspring!(rng, pop, k, p1, p2)
-    @unpack arch, recmap, nodes = pop 
+    @unpack arch, nodes = pop; @unpack recmap = arch
     (p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
     bps = rand_breakpoints(rng, recmap)
     recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 

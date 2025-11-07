@@ -13,7 +13,7 @@ GPMap() = GPMap{GenericComponent}(GenericComponent[])
 # different components combine additively to yield a phenotype (e.g.
 # log-fitness)
 function phenotype(gpm::GPMap, x)
-    mapreduce(c->eval_component(c, x), +, gpm.components)
+    mapreduce(c->eval_component(c, x), +, gpm.components; init=0.0)
 end
 
 # a generic component is just a function of genotype

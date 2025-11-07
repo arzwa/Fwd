@@ -4,12 +4,12 @@
 # given that it implements the necessary functions for (1) ts
 # initialisation, (2) migration, (3) generation.
 """
-    TwoPop
+    TwoPopOneWay
 
 Migration is from A to B forward in time. Migration replaces an expected
 proportion `m` of the B population by A individuals, without affecting A.
 """
-struct TwoPopOneWay{P,T}
+struct TwoPopOneWay{P,T} <: AbstractPop
     m    :: T
     popA :: P
     popB :: P
@@ -75,13 +75,13 @@ function simplify!(pop::TwoPopOneWay, ts::TreeSequence)
     return pop, sts
 end
 
-function init_ts(pop::TwoPopOneWay, L)
+function init_ts(pop::TwoPopOneWay)
     @unpack popA, popB = pop
-    tsa = init_ts(popA, L, popid=1)
-    tsb = init_ts(popB, L, popid=2)
+    tsa = init_ts(popA, popid=1)
+    tsb = init_ts(popB, popid=2)
     ns = [tsa.nodes; tsb.nodes]
     es = tsa.edges
     cs = [tsa.children; tsb.children] 
-    TreeSequence(ns, es, cs, L, true)
+    TreeSequence(ns, es, cs, tsa.L, true)
 end
 

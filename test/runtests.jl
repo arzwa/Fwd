@@ -76,11 +76,11 @@ end
     NB = 3
     C = 0.005
     m = 0.2
-    R  = LinearMap(C)
-    popA = WFPopulation(ploidy=Haploid(), N=NA, recmap=R, nodes=collect(1:NA))
-    popB = WFPopulation(ploidy=Haploid(), N=NB, recmap=R, nodes=collect(1:NB) .+ NA)
+    A = Architecture(BiAllelic{Float64}[], Float64[], LinearMap(C))
+    popA = WFPopulation(ploidy=Haploid(), N=NA, arch=A, nodes=collect(1:NA))
+    popB = WFPopulation(ploidy=Haploid(), N=NB, arch=A, nodes=collect(1:NB) .+ NA)
     mpop = Fwd.TwoPopOneWay(m, popA, popB)
-    ts = Fwd.init_ts(mpop, C) 
+    ts = Fwd.init_ts(mpop) 
     rng = Random.seed!(323)
     for i=1:10
         mpop = Fwd.generation!(rng, mpop, ts);
@@ -92,34 +92,59 @@ end
     @test all([sts.nodes[x].pop == 2 for x in mpop.popB.nodes])
 end
 
-@testset "" begin
-    NA = 200
-    NB = 300
-    C = 0.5
-    m = 0.001
-    R  = LinearMap(C)
-    nA = collect(1:NA)
-    nB = collect(1:NB) .+ NA
-    popA = WFPopulation(ploidy=Haploid(), N=NA, recmap=R, nodes=collect(1:NA))
-    popB = WFPopulation(ploidy=Haploid(), N=NB, recmap=R, nodes=collect(1:NB) .+ NA)
-    mpop = Fwd.TwoPopOneWay(m, popA, popB)
-    ts = Fwd.init_ts(mpop, C) 
-    rng = Random.seed!(152)
-    ngen = 10*(NB+NA)
-    for i=1:ngen
-        mpop = Fwd.generation!(rng, mpop, ts);
-        if i % 100 == 0 
-            mpop, ts = Fwd.simplify!(mpop, ts)
-        end
-    end
-    xx, ta, tb, tab = Fwd.diffdiv(ts)
-    Eta = NA
-    Etb = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
-    Etb_ = NB*((3-4m) + m*NA*(2-m))/(1 + 2m*(NB-1))
-    Etb_ = (3 + 2m*NA)/(1 + 2m*NB)
-    Etab = 1/m + NA 
-    @info mean(ta), Eta
-    @info mean(tb), Etb, Etb_*NB
-    @info mean(tab), Etab
+@testset "MetaPop vs. TwoPopOneWay" begin
+    NA = 1
+    NB = 200
+    s = 0.05
+    m = s/4
+    u = s/200
+    AB = Architecture([BiAllelic(  u)], Float64[], Unlinked())
+    AA = Architecture([BiAllelic(0.0)], Float64[], Unlinked())
+    Φ = GPMap([HaploidLocus(-s, 1)])
+    popA = WFPopulation(ploidy=Haploid(), gpm=Φ, N=NA, arch=AA, x=[[true]], nodes=collect(1:NA))
+    popB = WFPopulation(ploidy=Haploid(), gpm=Φ, N=NB, arch=AB, x=[[false] for _=1:NB], nodes=collect(1:NB) .+ NA)
+    # TwoPop
+    twopop = Fwd.TwoPopOneWay(m, deepcopy(popA), deepcopy(popB))
+    rng = Random.seed!(12)
+    _,ts1,q1 = simulate!(rng, twopop, init_ts(twopop), 10NB, pop->mean(pop.popB.x)[1])
+    # MetaPop
+    M = [0.0 m; 0.0 0.0]
+    metapop = Fwd.MetaPop([deepcopy(popA), deepcopy(popB)], M)
+    rng = Random.seed!(12)
+    _,ts2,q2 = simulate!(rng, metapop, init_ts(metapop), 10NB, pop->mean(pop[2].x)[1])
+    @test all(q1 .== q2)
+    @test all(ts1.edges .== ts2.edges)
 end
+
+#@testset "" begin
+#    NA = 1000
+#    NB = 1000
+#    C = 0.5
+#    m = 0.001
+#    R  = LinearMap(C)
+#    nA = collect(1:NA)
+#    nB = collect(1:NB) .+ NA
+#    A = Architecture(HaploidLocus{Float64}[], Float64[], LinearMap(C))
+#    popA = WFPopulation(ploidy=Haploid(), N=NA, arch=A, nodes=collect(1:NA))
+#    popB = WFPopulation(ploidy=Haploid(), N=NB, arch=A, nodes=collect(1:NB) .+ NA)
+#    mpop = Fwd.TwoPopOneWay(m, popA, popB)
+#    ts = Fwd.init_ts(mpop, C) 
+#    rng = Random.seed!(152)
+#    ngen = 10*(NB+NA)
+#    @showprogress for i=1:ngen
+#        mpop = Fwd.generation!(rng, mpop, ts);
+#        if i % 100 == 0 
+#            mpop, ts = Fwd.simplify!(mpop, ts)
+#        end
+#    end
+#    xx, ta, tb, tab = Fwd.diffdiv(ts)
+#    Eta = NA
+#    Etb = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
+#    Etb_ = NB*((3-4m) + m*NA*(2-m))/(1 + 2m*(NB-1))
+#    Etb_ = (3 + 2m*NA)/(1 + 2m*NB)
+#    Etab = 1/m + NA 
+#    @info mean(ta), Eta
+#    @info mean(tb), Etb, Etb_*NB
+#    @info mean(tab), Etab
+#end
 
