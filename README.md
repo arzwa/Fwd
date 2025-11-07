@@ -147,7 +147,7 @@ plot!(0:0.001:1, x->pdf(d,1-x), label="diffusion theory", xlabel="\$q\$", ylabel
 
 ![](docs/pl1.png)
 
-get tree heights
+get cross-population coalescence times
 
 ````julia
 xs, _, _, tab = diffdiv(ts)
