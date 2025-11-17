@@ -8,24 +8,24 @@ m   = s/10
 C   = 0.1
 xs  = [C/2]
 L   = 1
-AA  = Architecture([BiAllelic(0.0) for _=1:L], xs)
-AB  = Architecture([BiAllelic(u) for _=1:L], xs)
+R   = LinearMap(C)
+AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
+AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
 MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
 MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
-R   = LinearMap(C)
 NA  = 500
 NB  = 500
 nA = collect(1:NA)
 nB = collect(1:NB) .+ NA
 xA = [ ones(Int, 1) for _=1:NA]
 xB = [zeros(Int, 1) for _=1:NB]
-popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, recmap=R, x=xA, nodes=nA)
-popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, recmap=R, x=xB, nodes=nB)
+popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
+popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
 ngen = 10^5
 
 rng = Random.seed!(22)
-pop, ts, qs = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop, C)
+pop, ts, qs = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop)
     qs = Matrix{Float64}(undef, ngen, 1)
     @showprogress for i=1:ngen
         pop = Fwd.generation!(rng, pop, ts);
@@ -44,13 +44,13 @@ x, ta, tb, tab = Fwd.diffdiv(ts)
 plot(x, tab)
 
 # With MetaPop
-popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, recmap=R, x=xA, nodes=nA)
-popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, recmap=R, x=xB, nodes=nB)
+popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
+popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
 mpop = MetaPop([popA, popB], [0.0 m; 0.0 0.0])
 ngen = 10^5
 
-rng = Random.seed!(28)
-pop2, ts2, qs2 = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop, C)
+rng = Random.seed!(22)
+pop2, ts2, qs2 = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop)
     qs = Matrix{Float64}(undef, ngen, 1)
     @showprogress for i=1:ngen
         pop = Fwd.generation!(rng, pop, ts);

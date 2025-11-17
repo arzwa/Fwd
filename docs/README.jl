@@ -117,7 +117,7 @@ pop = MetaPop(Ps, M)
 rng = Random.seed!(89)
 pop, ts = simulate!(rng, pop, init_ts(pop), 20000);
 
-# Graph the allele frequencies of teh selected loci at the end of the
+# Graph the allele frequencies of the selected loci at the end of the
 # simulation and show the mean coalescence times between the leftmost and
 # rightmost deme.
 qs = permutedims(hcat([mean(pop[i].x) for i=1:D]...))
@@ -131,3 +131,34 @@ savefig("docs/pl3.png") #src
 # ![](docs/pl3.png)
 #
 # The barrier effect is nicely demonstrated.
+#
+# ## Two-locus model
+r = 0.01
+Φ = GPMap([HaploidTwoLocus(0.00, 0.00, 0.0, 1, 2)])
+#M = LinearMap(Fwd.distance(r))
+#A = Architecture([BiAllelic(1e-4) for _=1:2], [0.0,maplength(M)], M)
+M = LinearPhysMap(maplength=Fwd.distance(r), physlength=2)
+A = Architecture([BiAllelic(1e-4) for _=1:2], [1,2], M)
+N = 2000
+states = [[0,0],[0,1],[1,0],[1,1]]
+function cb(pop)
+    pm = proportionmap(pop.x)
+    [haskey(pm, x) ? pm[x] : 0.0 for x in states]
+end
+rng = Random.seed!(26)
+res = map(1:20) do _
+    pop = WFPopulation(ploidy=Haploid(), gpm=Φ, N=N, arch=A, 
+        x=[rand() < 0.5 ? [true,true] : [false,false] for _=1:N])
+    pop, hs = simulate!(rng, pop, 1000, cb)
+    H = permutedims(hcat(hs...))
+    D = H[:,4] .* H[:,1] .- H[:,2] .* H[:,3]
+    H, D
+end
+P1 = plot(res[1][1], label=reshape(join.(states),1,4), legend=:topright, 
+    ylabel="haplotype freq.", xlabel="generation")
+P2 = plot(mean(last.(res)), color=:black, ylabel="\$D\$", xlabel="generation")
+plot!(x->0.25*exp(-r*x), lw=2)
+plot(P1, P2, size=(600,220), margin=3Plots.mm)
+
+savefig("docs/pl4.png") #src
+# ![](docs/pl4.png)

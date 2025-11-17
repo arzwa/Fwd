@@ -1,23 +1,50 @@
 # Simulation routines...
-simulate!(pop::AbstractPop, args...) = simulate!(Random.default_rng(), args...)
-function simulate!(rng::AbstractRNG, pop, ts, ngen; simplify=100)
-    @showprogress for t=1:ngen
-        pop = Fwd.generation!(rng, pop, ts);
+simulate!(pop::AbstractPop, args...) = simulate!(Random.default_rng(), pop, args...)
+
+# No ts recording
+function simulate!(rng::AbstractRNG, pop::AbstractPop, ngen::Int; show_progress=true)
+    p = Progress(ngen; enabled=show_progress) 
+    for t=1:ngen
+        pop = Fwd.generation!(rng, pop)
+        next!(p)
+    end
+    return pop
+end
+
+function simulate!(rng::AbstractRNG, pop::AbstractPop, ngen::Int, cb::Function; show_progress=true)
+    ys = [cb(pop)]
+    p = Progress(ngen; enabled=show_progress)
+    for t=1:ngen
+        pop = Fwd.generation!(rng, pop)
+        push!(ys, cb(pop))
+        next!(p)
+    end
+    return pop, ys
+end
+
+# with ts recording, no callback
+function simulate!(rng::AbstractRNG, pop, ts, ngen; simplify=100, show_progress=true)
+    p = Progress(ngen; enabled=show_progress)
+    for t=1:ngen
+        pop = Fwd.generation!(rng, pop, ts)
         if t % simplify == 0 
             pop, ts = Fwd.simplify!(pop, ts)
         end
+        next!(p)
     end
     return pop, ts
 end
 
-function simulate!(rng::AbstractRNG, pop, ts, ngen, cb::Function; simplify=100)
+function simulate!(rng::AbstractRNG, pop, ts, ngen, cb::Function; simplify=100, show_progress=true)
     ys = [cb(pop)]
-    @showprogress for t=1:ngen
-        pop = Fwd.generation!(rng, pop, ts);
+    p = Progress(ngen; enabled=show_progress)
+    for t=1:ngen
+        pop = Fwd.generation!(rng, pop, ts)
         push!(ys, cb(pop))
         if t % simplify == 0 
             pop, ts = Fwd.simplify!(pop, ts)
         end
+        next!(p)
     end
     return pop, ts, ys
 end

@@ -116,35 +116,62 @@ end
     @test all(ts1.edges .== ts2.edges)
 end
 
-#@testset "" begin
-#    NA = 1000
-#    NB = 1000
-#    C = 0.5
-#    m = 0.001
-#    R  = LinearMap(C)
-#    nA = collect(1:NA)
-#    nB = collect(1:NB) .+ NA
-#    A = Architecture(HaploidLocus{Float64}[], Float64[], LinearMap(C))
-#    popA = WFPopulation(ploidy=Haploid(), N=NA, arch=A, nodes=collect(1:NA))
-#    popB = WFPopulation(ploidy=Haploid(), N=NB, arch=A, nodes=collect(1:NB) .+ NA)
-#    mpop = Fwd.TwoPopOneWay(m, popA, popB)
-#    ts = Fwd.init_ts(mpop, C) 
-#    rng = Random.seed!(152)
-#    ngen = 10*(NB+NA)
-#    @showprogress for i=1:ngen
-#        mpop = Fwd.generation!(rng, mpop, ts);
-#        if i % 100 == 0 
-#            mpop, ts = Fwd.simplify!(mpop, ts)
-#        end
-#    end
-#    xx, ta, tb, tab = Fwd.diffdiv(ts)
-#    Eta = NA
-#    Etb = (3NB − 4NB*m + 2NA*NB*m + m^2*NB − m^2*NA*NB)/(1 − 2m + 2NB*m + m^2 − m^2*NB)
-#    Etb_ = NB*((3-4m) + m*NA*(2-m))/(1 + 2m*(NB-1))
-#    Etb_ = (3 + 2m*NA)/(1 + 2m*NB)
-#    Etab = 1/m + NA 
-#    @info mean(ta), Eta
-#    @info mean(tb), Etb, Etb_*NB
-#    @info mean(tab), Etab
-#end
+@testset "Recombination" begin
+    rng = Random.seed!(892)
+    L = 3
+    # LinearMap
+    C = 0.4 
+    xs = sort(rand(rng, 3) .* C)
+    recmap = LinearMap(C) 
+    nrep = 10^6
+    res = map(1:nrep) do _
+        tgt = Vector{Bool}(undef, L)
+        src1 = fill(true, L)
+        src2 = fill(false, L)
+        src1, src2 = rand(rng) < 0.5 ? (src1, src2) : (src2, src1)
+        Fwd.recombine!(rng, tgt, src1, src2, recmap, xs)    
+        tgt
+    end
+    r12 = sum([x[1] != x[2] for x in res])/nrep
+    r13 = sum([x[1] != x[3] for x in res])/nrep
+    r23 = sum([x[2] != x[3] for x in res])/nrep
+    @test Fwd.recrate(xs[2]-xs[1]) ≈ r12 atol=0.001
+    @test Fwd.recrate(xs[3]-xs[1]) ≈ r13 atol=0.001
+    @test Fwd.recrate(xs[3]-xs[2]) ≈ r23 atol=0.001
+    # LinearPhysMap
+    C  = 0.4 
+    G  = 10_000
+    xs = [100, 3400, 8000]
+    recmap = LinearPhysMap(G=G, C=C) 
+    nrep = 10^6
+    res = map(1:nrep) do _
+        tgt = Vector{Bool}(undef, L)
+        src1 = fill(true, L)
+        src2 = fill(false, L)
+        src1, src2 = rand(rng) < 0.5 ? (src1, src2) : (src2, src1)
+        Fwd.recombine!(rng, tgt, src1, src2, recmap, xs)    
+        tgt
+    end
+    r12 = sum([x[1] != x[2] for x in res])/nrep
+    r13 = sum([x[1] != x[3] for x in res])/nrep
+    r23 = sum([x[2] != x[3] for x in res])/nrep
+    @test Fwd.recrate(recmap, xs[2],xs[1]) ≈ r12 atol=0.001
+    @test Fwd.recrate(recmap, xs[3],xs[1]) ≈ r13 atol=0.001
+    @test Fwd.recrate(recmap, xs[3],xs[2]) ≈ r23 atol=0.001
+end
 
+@testset "Chromosomes, unlinked" begin
+    rng = Random.seed!(392)
+    L = 20
+    M = Chromosomes([Unlinked() for _=1:L])
+    nrep = 10^6
+    res = map(1:nrep) do _
+        tgt = Vector{Bool}(undef, L)
+        src1 = ones(Bool, L)
+        src2 = zeros(Bool, L)
+        src1, src2 = rand() < 0.5 ? (src1, src2) : (src2, src1)
+        Fwd.recombine!(rng, tgt, src1, src2, M, 1:L)    
+        tgt
+    end
+    @test all(abs.(mean(res) .- 0.5) .< 0.01)
+end

@@ -1,24 +1,36 @@
-# NOTE: would it be nicer to work with pairwise recombination rates, as
-# that accounts for unlinked loci automatically? But not sure how to sample
-# breakpoints efficiently in general.
-
 abstract type RecombinationMap end
 
 struct LinearMap{T} <: RecombinationMap
     maplength :: T  # maplength in Morgans, i.e. expected # of crossovers
 end
 Base.length(m::LinearMap) = m.maplength
+Base.zero(m::LinearMap{T}) where T = zero(T)
+function nextbreakpoint(rng, recmap::LinearMap, bp)
+    @unpack maplength = recmap
+    maplength == 0. && return maplength
+    bp = bp + randexp(rng)
+    return min(bp, maplength)
+end
 
 @with_kw struct LinearPhysMap{T} <: RecombinationMap
-    physlength :: Int
-    maplength  :: T
-    rbp        :: T = maplength/physlength   # M/bp
+    G :: Int
+    C :: T
+    rbp :: T = C/(G-1)   # M/bp
 end
-Base.length(m::LinearPhysMap) = m.physlength
+Base.length(m::LinearPhysMap) = m.G
+Base.zero(m::LinearPhysMap) = 0
 recrate(m::LinearPhysMap, x, y) = recrate(m.rbp * abs(x - y))
+function nextbreakpoint(rng, recmap::LinearPhysMap, bp)
+    @unpack rbp, G = recmap
+    (isnan(rbp) || iszero(rbp)) && return G
+    bp = bp + ceil(Int, rand(rng, Exponential(1/rbp)))
+    return min(bp, G)
+end
 
 struct Unlinked <: RecombinationMap end
 Base.length(m::Unlinked) = 1
+Base.zero(m::Unlinked) = 0
+nextbreakpoint(_, recmap::Unlinked, bp) = 1
 
 """
     Chromosomes
@@ -39,15 +51,14 @@ M = Chromosomes([Unlinked() for _=1:L])
 ```
 This is equivalent to 
 ```
-M = Chromosomes([LinearPhysMap(physlength=1, maplength=0.0) for _=1:L])
+M = Chromosomes([LinearPhysMap(G=1, C=0.0) for _=1:L])
 ```
 The latter however admits mixing linked with unlinked stuff.
 """
 struct Chromosomes{M<:RecombinationMap} <: RecombinationMap 
     maps :: Vector{M}
 end    
-
-maplength(m) = m.maplength
+Base.length(c::Chromosomes) = length(c.maps)
 
 # Haldane's mapping function
 # distance -> recombination rate
@@ -59,67 +70,58 @@ distance(r) = -0.5*log(1 - 2r)
 # recombination rate matrix
 rec_matrix(x) = [recrate(abs(x[i] - x[j])) for i=1:length(x), j=1:length(x)]
 
-function rand_breakpoints(rng, m::LinearMap)
-    L = maplength(m)
-    n = rand(rng, Poisson(L))
-    bps = rand(rng, n) .* L
-    [sort!(bps) ; L]
-end
-
-function rand_breakpoints(rng, m::LinearPhysMap)
-    n = rand(rng, Poisson(maplength(m)))
-    bps = sample(rng, 1:m.physlength-1, n, replace=false)
-    [sort!(bps); m.physlength]
-end
-
-rand_breakpoints(_, m::Unlinked) = [1]
-
-# XXX could have a specialized implementation for unlinked architectures
-function rand_breakpoints(rng, m::Chromosomes)
-    C = 0.0
-    bps = map(m.maps) do recmap
-        bps = rand_breakpoints(rng, recmap)
-        bps .+= C
-        C += length(recmap)
-        bps
+# Assumes each `recmap` implements `length` and `nextbreakpoint`
+# length gives the map lengths relative to which `xs` are coordinates.
+function recombine!(rng, tgt, src1, src2, recmap::Chromosomes, xs, args...)
+    χ  = true  # indicator which src to take
+    i  = 1     # locus
+    C  = 0.0   # map position start
+    for (k,chrom) in enumerate(recmap.maps)
+        i, C = recombine!(rng, 
+            tgt, src1, src2, chrom, xs, args...; 
+            i=i, C=C, χ=χ)
+        χ = rand(rng) < 0.5   # recombination between chromosomes
     end
-    for chrom in bps[1:end-1]
-        rand(rng) < 0.5 && pop!(chrom)
-        # the last entry for each chromosome is the chromosome endpoint,
-        # if we keep it among breakpoints, there's a recombination between
-        # unlinked chromosomes, if we remove it, there is no recombination.
-    end
-    vcat(bps...)
 end
 
-# `recombine!` is a general function, different sorts of genetic map should
-# implement their specific `rand_breakpoints` function. 
-"""
-    recombine!(z, breakpoints, x, y, xs)
-
-Recombine `x` and `y` assuming crossover recombination at `breakpoints`,
-assuming the entries of `x` and `y` are at map positions `xs` (should be sorted),
-write to `z`.
-
-!!! note: This function is deterministic, for a given set of breakpoints and
-`x` and `y` haplotypes, it will always return the same recombinant haplotype.
-To obtain a random recombinant haplotype for a given set of brekapoints and
-haplotype (i.e. a random pick of the two recombinant haplotypes), one should
-randomize the order of the `x` and `y` arguments.
-"""
-function recombine!(z, breakpoints, x, y, xs, onx=true) 
-    length(z) == 0 && return
-    i   = 1
-    for bp in breakpoints
-        while i <= length(xs) && xs[i] <= bp
-            z[i] = onx ? x[i] : y[i]
+# without ts recording
+function recombine!(rng, tgt, src1, src2, recmap, xs; 
+        i=1, C=zero(recmap), χ=true)
+    bp = zero(recmap)
+    C′ = C + length(recmap)
+    while C + bp < C′
+        bp = nextbreakpoint(rng, recmap, bp)
+        bpk = C + bp  # absolute breakpoint coordinate 
+        # if bp is at `xs[i]`, than xs[i] is the last locus before the bp
+        while i <= length(xs) && xs[i] <= bpk && xs[i] <= C′
+            tgt[i] = χ ? src1[i] : src2[i]
             i += 1
-        end
-        i > length(xs) && break
-        xs[i] > bp && (onx = !onx)
+        end  
+        χ = !χ  # switch parent
     end
-    i > length(z) && return z
-    z[i:end] .= onx ? x[i:end] : y[i:end]
-    return z
+    return i, C′
+end
+
+# with ts recording
+function recombine!(rng, tgt, src1, src2, recmap, xs, ts, nodes; 
+        i=1, C=zero(recmap), χ=true)
+    (p1, p2, c) = nodes
+    bp = zero(recmap)
+    x0 = C
+    C′ = C + length(recmap)
+    while x0 < C′
+        bp = nextbreakpoint(rng, recmap, bp)
+        x1 = C + bp
+        e  = χ ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
+        addedge!(ts, e) 
+        # if bp is at `xs[i]`, than xs[i] is the last locus before the bp
+        while i <= length(xs) && xs[i] <= x1 && xs[i] <= C′
+            tgt[i] = χ ? src1[i] : src2[i]
+            i += 1
+        end  
+        x0 = x1 
+        χ  = !χ  # switch parent
+    end
+    return i, C
 end
 

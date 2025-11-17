@@ -77,9 +77,10 @@ function addedge!(edges, children, edge)
     return n
 end
 
+addedge!(ts::TreeSequence, edge) = addedge!(ts.edges, ts.children, edge)
 function addedges!(ts::TreeSequence, edges)
     for e in edges
-        addedge!(ts.edges, ts.children, e)
+        addedge!(ts, e)
     end
 end
 

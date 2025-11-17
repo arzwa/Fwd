@@ -7,6 +7,8 @@ _ploidy(_::Haploid) = 1
 _ploidy(_::Diploid) = 2
 
 abstract type AbstractPop end
+generation!(pop::AbstractPop) = generation!(Random.default_rng(), pop)
+
 """
     WFPopulation
 
@@ -122,18 +124,24 @@ end
 # with ts recording
 function _generate_offspring!(rng, pop, k, p1, p2, ts::TreeSequence, ns)
     @unpack arch, nodes = pop; @unpack recmap = arch
-    (p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
-    bps = rand_breakpoints(rng, recmap)
-    recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
-    addedges!(ts, nodes[p1], nodes[p2], ns[k], bps)
+    recombine!(rng, 
+        pop._x[k], pop.x[p1], pop.x[p2], arch.recmap, arch.xs, 
+        ts, (nodes[p1], nodes[p2], ns[k]))
+    #(p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
+    #bps = rand_breakpoints(rng, recmap)
+    #recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
+    #addedges!(ts, nodes[p1], nodes[p2], ns[k], bps)
 end
 
 # without ts recording
 function _generate_offspring!(rng, pop, k, p1, p2)
     @unpack arch, nodes = pop; @unpack recmap = arch
-    (p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
-    bps = rand_breakpoints(rng, recmap)
-    recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
+    # XXX why would one randomize the input order, they are randomly sampled
+    # in the outer loop no?
+    #(p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
+    #bps = rand_breakpoints(rng, recmap)
+    #recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
+    recombine!(rng, pop._x[k], pop.x[p1], pop.x[p2], arch.recmap, arch.xs)
     # deciding p1, p2 switching is not necessary, could give rand() < 0.5
     # as last argument to recombine!... but perhaps more transparent (also
     # compare with tsrecording version...)
