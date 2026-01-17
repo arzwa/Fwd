@@ -124,10 +124,10 @@ end
 # with ts recording
 function _generate_offspring!(rng, pop, k, p1, p2, ts::TreeSequence, ns)
     @unpack arch, nodes = pop; @unpack recmap = arch
+    #(p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
     recombine!(rng, 
         pop._x[k], pop.x[p1], pop.x[p2], arch.recmap, arch.xs, 
         ts, (nodes[p1], nodes[p2], ns[k]))
-    #(p1, p2) = rand(rng) < 0.5 ? (p1, p2) : (p2, p1)
     #bps = rand_breakpoints(rng, recmap)
     #recombine!(pop._x[k], bps, pop.x[p1], pop.x[p2], arch.xs) 
     #addedges!(ts, nodes[p1], nodes[p2], ns[k], bps)

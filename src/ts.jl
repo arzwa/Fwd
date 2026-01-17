@@ -111,7 +111,7 @@ function simplify(
         ts::TreeSequence{T,V,W}, 
         smpl::Vector{T};
         keep_unary=false,
-        keep_roots=false  # misnomer -- keeps the oldest nodes that are roots
+        keep_roots=true  # misnomer -- keeps the oldest nodes that are roots
     ) where {T,V,W}
     @unpack nodes, edges, children, L, forward = ts
     if forward
@@ -311,6 +311,25 @@ function leaves(ts::TreeSequence)
 end
 
 leaves(ts::TreeSequence, pop) = filter(i->population(ts[i]) == pop, leaves(ts))
+
+# all nodes that have no parent derive from a single new node
+function _add_grand_ancestor(ts)
+    @assert ts.forward
+    @unpack nodes, edges, children, L = ts
+    idx = [i for (i,n) in enumerate(nodes) if n.time==0]
+    nodes_ = [Node(n.time+1, n.pop) for n in nodes]
+    nodes_ = [Node(0, 0); nodes_]
+    edges_ = [Edge(e.parent+1, e.child+1, e.left, e.rght) for e in edges]
+    redges = [Edge(1, i+1, zero(L), L) for i in idx]
+    rchild = collect(1:length(redges))
+    children_ = deepcopy(children)
+    for x in children_
+        x .+= length(redges)
+    end
+    children_ = [rchild, children_...]
+    edges_ = [redges; edges_]
+    reconstruct(ts, nodes=nodes_, edges=edges_, children=children_)
+end
 
 # neutral WF -----------------------------------------------------------
 # pop is a collection of node IDs, where index k and N+k give the two

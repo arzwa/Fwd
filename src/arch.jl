@@ -11,9 +11,9 @@ struct IntAllelic{T} <: Locus
 end
 
 # XXX should we add the recombination map as a field?
-struct Architecture{L,V<:AbstractVector,R<:RecombinationMap}
-    loci   :: Vector{L}  # loci
-    xs     :: V  # map locations
+@with_kw struct Architecture{L,V<:AbstractVector,R<:RecombinationMap}
+    loci   :: Vector{L} = BiAllelic{Float64}[] # loci
+    xs     :: V = Float64[] # map locations
     recmap :: R
 end
 Base.length(arch::Architecture) = length(arch.loci)

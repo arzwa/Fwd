@@ -1,5 +1,5 @@
 using Distributed 
-addprocs(10)
+#addprocs(10)
 
 @everywhere using Pkg
 @everywhere Pkg.activate("/home/arzwa/dev/Fwd")
@@ -450,4 +450,37 @@ pmap(1:nrep) do i
 end
 # no divergence -- we expect Pfix ≈ 2(sb - m)
 
+# ---------------------------------------------------
+
+model = Model1(L=10, s=0.02, m=0.005, u=1e-5, N=500, r=0.49, sb=0.05)
+Ep = initialp(model)
+
+function bcprops(n, model, f)
+    Ep = initialp(model)
+    @unpack L, s, m = model
+    ws = [exp(-L*s*Ep/2^k) for k=0:n]
+    ws ./= ws[end]
+    f .*= (1-m)
+    f[1] = f[1]+m
+    fw = f .* ws
+    ff = [0; 2fw[1:end-1] .* fw[end]]
+    ff[end] += fw[end]^2
+    ff ./ sum(ff)
+end
+
+n = 10
+f = [zeros(n) ; 1]
+for _=1:1000
+    f = bcprops(n, model, f)
+    @info f[2], f[end]
+end
+
+function predprops(model)
+    Ep = initialp(model)
+    @unpack L, s, m = model
+    f1 = 2m*exp(-L*s*Ep)
+    f2 = 2*f1*exp(-L*s*Ep/2)
+    f3 = 2*f2*exp(-L*s*Ep/4)
+    f1, f2, f3
+end
 

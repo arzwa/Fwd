@@ -1,5 +1,6 @@
 # Simulation routines...
-simulate!(pop::AbstractPop, args...) = simulate!(Random.default_rng(), pop, args...)
+simulate!(pop::AbstractPop, args...; kwargs...) = simulate!(
+    Random.default_rng(), pop, args...; kwargs...)
 
 # No ts recording
 function simulate!(rng::AbstractRNG, pop::AbstractPop, ngen::Int; show_progress=true)
@@ -35,12 +36,14 @@ function simulate!(rng::AbstractRNG, pop, ts, ngen; simplify=100, show_progress=
     return pop, ts
 end
 
-function simulate!(rng::AbstractRNG, pop, ts, ngen, cb::Function; simplify=100, show_progress=true)
+function simulate!(rng::AbstractRNG, pop, ts, ngen, cb::Function; simplify=100, show_progress=true, every=1)
     ys = [cb(pop)]
     p = Progress(ngen; enabled=show_progress)
     for t=1:ngen
         pop = Fwd.generation!(rng, pop, ts)
-        push!(ys, cb(pop))
+        if t % every == 0
+            push!(ys, cb(pop))
+        end
         if t % simplify == 0 
             pop, ts = Fwd.simplify!(pop, ts)
         end
@@ -49,6 +52,7 @@ function simulate!(rng::AbstractRNG, pop, ts, ngen, cb::Function; simplify=100, 
     return pop, ts, ys
 end
 
+summarize_wins(X::Vector{<:Tuple}) = summarize_wins(first.(X), last.(X))
 function summarize_wins(xs, ys)
    breaks = sort(union(xs...))
    n = length(breaks)
@@ -70,7 +74,9 @@ end
 
 theights(ts::TreeSequence) = theights(to_tskit(ts))
 
+theights(ts::TreeSequence) = theights(to_tskit(ts))
 function theights(ts)
+    ts = ts.simplify()
     xs = collect(ts.breakpoints())[1:end-1]
     th = map(ts.trees()) do tree
         length(tree.roots) > 1 ? NaN : tree.time(tree.root)
@@ -79,9 +85,11 @@ function theights(ts)
 end
 
 diffdiv(ts::TreeSequence, p1=1, p2=2; kwargs...) = diffdiv(to_tskit(ts), p1-1, p2-1; kwargs...)
-
 function diffdiv(ts, pop1=0, pop2=1; windows=collect(ts.breakpoints()))
-    ts.simplify(ts.samples())
+    if !all([t.num_roots for t in ts.trees()][1:end-1] .== 1)
+        @warn "Not all coalesced!" 
+    end
+    ts = ts.simplify(ts.samples())
     x0 = ts.samples(population=pop1)
     x1 = ts.samples(population=pop2)
     pi0 = ts.diversity(x0, mode="branch", windows=windows) ./ 2
@@ -121,3 +129,30 @@ function hmrecrate(xs)
     end
     (L*(L-1)/2)/rhm
 end
+
+function estimate_coaltimes(tss, ci=0.95, pa=0., pb=0.; idx=4)
+    q0 = (1-ci)/2
+    q1 = 1-q0
+    tbs = map(tss) do ts
+       _ts = Fwd._add_grand_ancestor(ts)
+       Fwd.diffdiv(_ts)[[1,idx]]
+    end
+    xx, yy = Fwd.summarize_wins(tbs)
+    ys = map(eachcol(yy)) do y
+       # Assume coalescence times are Geometrically distributed with
+       # a noninformative Beta prior for the parameter of the
+       # geometric distribution, determine the posterior Beta for the
+       # parameter. Get [0.025, 0.975] posterior quantiles for the
+       # Geometric distributions
+       dp = Beta(length(y) + pa, sum(y) - 1 + pb)
+       yu = mean(Geometric(quantile(dp, q0)))
+       yl = mean(Geometric(quantile(dp, q1)))
+       ym = 1/mean(dp)
+       ym, yl, yu
+    end
+    ym = first.(ys)
+    yl = getindex.(ys,2)
+    yu = getindex.(ys,3)
+    xx, ym, ym .- yl, yu .- ym
+end
+

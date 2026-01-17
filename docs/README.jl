@@ -63,7 +63,7 @@ popB = WFPopulation(ploidy=Haploid(), gpm=Φ, N=NB, arch=AB, x=xB, nodes=nB)
 ngen = 20NB
 
 mpop, ts, qs = let
-    rng  = Random.seed!(1)
+    rng  = Random.seed!(12)
     mpop = TwoPopOneWay(m, popA, popB)
     mpop, ts, qs = simulate!(rng, mpop, init_ts(mpop), ngen, pop->mean(pop.popB.x)[1])
 end
@@ -75,7 +75,7 @@ q = vec(hcat(qs...)')
 d = Wright(-2NB*s, NB*u, NB*(m + u), 0.5)
 stephist(q, norm=true, color=:gray, fill=true, fillalpha=0.2, label="simulation")
 plot!(0:0.001:1, x->pdf(d,1-x), label="diffusion theory", xlabel="\$q\$", ylabel="density")
-savefig("docs/pl1.png") #src
+#savefig("docs/pl1.png") #src
 # ![](docs/pl1.png)
 
 # get cross-population coalescence times
@@ -85,7 +85,7 @@ vline!(AB.xs, lw=2)
 gff(x1, x2, s) = 1/(1+s/Fwd.recrate(abs(x1-x2))) 
 plot!(x->1/(m*gff(x, C/2, s)), ylim=(0,ngen), color=:black, lw=2, 
     ls=:dash, xlabel="\$x\$", ylabel="\$T_{AB}\$")
-savefig("docs/pl2.png") #src
+#savefig("docs/pl2.png") #src
 # ![](docs/pl2.png)
 
 

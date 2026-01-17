@@ -14,13 +14,6 @@ xs= [C/2]
 s = 0.05
 u = 0.01
 M = GPMap([HaploidLocus(-s, i) for i=1:L])
-# To model epistasis in a rather general way, it would be better to revise
-# `Architecture` more substantially, think more of it as a
-# genotype-phenotyp map. I think one should have each `locus` carry with it
-# at which indices in the genotype the relevant alleles are to be found.
-# So this becomes more like a quantitative genetics expansion of the
-# genotypic value.
-
 A = Architecture([BiAllelic(u) for _=1:L], xs)
 R = LinearMap(C)
 ts= Fwd.init_ts(2N, C) 

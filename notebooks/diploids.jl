@@ -1,189 +1,117 @@
 
-# XXX not yet updated
 using Fwd
 using Test
 using Random
 using Parameters
 using StatsBase
+using ProgressMeter
+using Plots
+using PyCall
+using QuadGK
+msprime = pyimport("msprime")
 
-N = 150
-L = 0
-C = 1e-12
-xs= Float64[]
-A = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
-R = LinearMap(C)
-ts= Fwd.init_ts(2N, C) 
-x = [zeros(Bool, L) for _=1:2N]
-
-rng = Random.seed!(12)
-pop = Fwd.DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
-ws  = Fwd.eval_fitness(pop)
-for _=1:10
-    idx = sample(rng, 1:N, Weights(ws), 2N)
-    pop = Fwd.generation!(rng, pop, idx, ts)
-end
-
-rng = Random.seed!(29)
-rts = map(1:100) do i
-    ts  = Fwd.init_ts(N, C) 
-    x   = [zeros(Bool, L) for _=1:N]
-    pop = Fwd.WFPopulation(
-        ploidy=Haploid(), N=N, arch=A, recmap=R, x=x, nodes=collect(1:N))
-    @info i
-    for i=1:5000
-        pop = Fwd.generation!(rng, pop, ts)
-        if i % 100 == 0
-            pop, ts = Fwd.simplify!(pop, ts)
+function LDxy(x, y)
+    @assert length(x) == length(y)
+    n = length(x)  # number of individuals
+    ld = 0.0
+    k = 0
+    for i=1:n-1
+        for j=i+1:n
+            ld += x[i]*x[j]*y[i]*y[j]
+            k += 1
         end
     end
-    reverse_relabel(simplify(ts, pop.nodes))
+    ld*2/(n*(n-1))
 end
-mean(x->time(x.nodes[end]), rts), 2N*(1-1/N)
 
+function LDxy(G::Matrix, x)
+    n = length(x)
+    ds = Tuple{Float64,Float64}[]
+    for i=1:n-1
+        for j=i+1:n
+            ld = LDxy(G[i,:], G[j,:])
+            d = x[j] - x[i]
+            push!(ds, (d, ld))
+        end
+    end
+    return ds
+end
 
-# -----------------------------------------
-N = 3
-L = 0
+function getbins(xy, bins)
+    n = length(bins)
+    zs = zeros(n-1)
+    ks = zeros(Int, n-1)
+    a, b = extrema(bins)
+    for (x,y) in xy
+        i = ceil(Int, (x / (b-a)) * (n-1))
+        zs[i] += y
+        ks[i] += 1
+    end
+    bins, zs ./ ks
+end
+
+pheal(λ, t) = 0.5 + (exp(-2λ*t)-1)/(4λ*t)
+psurvival(λ, x) = quadgk(t->exp(-2*t*x*(1-pheal(λ, t)))*λ*exp(-λ*t), 0, Inf)[1]
+
+function predictbins(bins, λ)
+    n = length(bins)
+    map(2:n) do i
+        quadgk(x->psurvival(λ,x), bins[i-1], bins[i])[1]/(bins[i]-bins[i-1])
+    end
+end
+
+rng = Random.seed!(8)
+nrep = 10
+N = 500
 C = 0.1
-xs= Float64[]
-A = Architecture([Fwd.DiploidBiLocus(0.0, 0.0, 0.0) for _=1:L], xs)
-R = LinearMap(C)
-ts= Fwd.init_ts(2N, C) 
-x = [zeros(Bool, L) for _=1:2N]
-pop = Fwd.DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
-rng = Random.seed!(19)
-for _=1:3
-    idx = sample(rng, 1:N, 2N)
-    pop = Fwd.generation!(rng, pop, idx, ts)
+A = Architecture(recmap=LinearMap(C))
+res = map(1:nrep) do it
+    pop = WFPopulation(N=N, arch=A, ploidy=Diploid()) 
+    pop, ts = simulate!(pop, init_ts(pop), 10N)
+    pts = to_tskit(ts)
+    #plot(Fwd.theights(pts))
+    # take a sample
+    n = 100
+    idx = sample(rng, 1:N, n, replace=false)
+    ind = [x for x in pts.samples()]
+    smpl = [ind[idx]; ind[idx .+ N]]
+    sts = pts.simplify(smpl)
+    # simulate mutations
+    mts = msprime.sim_mutations(
+        sts, rate=1, 
+        random_seed=rand(rng, 1:2^32), 
+        model=msprime.BinaryMutationModel(), 
+        discrete_genome=false)
+    x = map(v->v.position, mts.variants())
+    H = mts.genotype_matrix()
+    G = H[:,1:n] .+ H[:,n+1:end]
+    p = mean(H, dims=2)
+    GG = permutedims(
+        mapreduce(i->(G[i,:] .- 2p[i]) ./ √(2p[i]*(1-p[i])), hcat, 1:length(p)))
+    maf = filter(i->0.25 < p[i] < 0.75, 1:length(p))
+    GG = GG[maf,:]
+    x  = x[maf,:]
+    lds = LDxy(GG, x)
+#    res = map(lds) do (d, ld)
+#        psurvival(1/2N, d), ld
+#    end
 end
 
-pts = Fwd.to_tskit(Fwd.reverse_relabel(ts))
-
-pts.simplify(pts.samples(), keep_input_roots=true).draw_text()|>print
-
-rts = reverse_relabel(sts)
-
-sts = Fwd.simplify(ts, pop.nodes, keep_roots=true)
-print(Fwd.draw_text(ts))
-print(Fwd.draw_text(sts))
-print(pts.simplify(0:2N-1).draw_text())
-
-xa = Fwd.collect_edges(ts, Fwd.youngest(ts))
-xb = Fwd.collect_edges(sts, Fwd.youngest(sts))
-
-pts = Fwd.from_tskit(Fwd.to_tskit(Fwd.reverse_relabel(ts)).simplify())
-
-
-res = map(1:20) do rep
-    @info rep
-    ts  = Fwd.init_ts(2N, C) 
-    x   = [zeros(Bool, L) for _=1:2N]
-    pop = Fwd.DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
-    for i=1:20N
-        idx = sample(rng, 1:N, 2N)
-        pop = Fwd.generation!(rng, pop, idx, ts)
-        if i % 100 == 0
-            pop, ts = Fwd.simplify!(pop, ts)
-            @test Fwd.check_edges(ts, pop.nodes)
-        end
-    end
-    rts = Fwd.reverse_relabel(ts)
-    pyts = Fwd.to_tskit(rts)
-    xs = collect(pyts.breakpoints())
-    ts = pyts.diversity(mode="branch", windows=xs) ./ 2
-    xs, ts
+#P0 = scatter(sample(res, 1000, replace=false), ms=2, color=:lightgray, title="\$N_e = $N\$, 0.5M chromosome, \$p > 0.25\$")
+#plot!(x->x, lw=2, color=:black, ylabel="\$\\mathrm{LD}_{x,y}\$", xlabel="\$S(u)\$")
+bins = 0:0.005:C
+zs = map(res) do lds
+    _, zs = getbins(lds, bins)
+    zs
 end
+bm = [(bins[i]+bins[i-1])/2 for i=2:length(bins)]
 
-plot(size=(300,200))
-map(res) do (xs, ys)
-    plot!(xs[1:end-1], first.(ys), color=:black, alpha=0.2)
-end
-plot!(legend=false)
-hline!([2N], lw=2)
+ss = predictbins(bs, 1/N)  # XXX coal rate should be 1/2N ? 
+plot(bm, ss, yscale=:log10, marker=false, xticks=[0.02,0.04,0.06,0.08,0.1])
+P1 = scatter!(bm, mean(zs), yscale=:log10, color=:black, ms=3,
+    xlabel="distance (M)", label="\$\\mathrm{LD}_{x,y}\$")
 
-_xs = map(x->x[2:end], first.(res))
-_ys = last.(res)
-xs, ys = Fwd.summarize_wins(_xs, _ys)
-plot(xs, vec(mean(ys, dims=1)), linetype=:steppre, color=:black)
-hline!([2N], lw=2, legend=false)
+plot!(bs[2:end], ss, lw=1, color=:gray, label="\$\\overline{S(u)}\$", legend=:topright)
 
-
-# ----------------
-N = 100
-L = 20
-C = 0.1
-s = 0.06
-h = 0.5
-u = s*h/5
-xs= collect(range(0.01, 0.02, L))
-A = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u) for _=1:L], xs)
-R = LinearMap(C)
-ts= Fwd.init_ts(2N, C) 
-x = [zeros(Bool, L) for _=1:2N]
-
-res = map(1:500) do rep
-    @info rep
-    ts  = Fwd.init_ts(2N, C) 
-    x   = [zeros(Bool, L) for _=1:2N]
-    pop = Fwd.DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
-    for i=1:20N
-        ws  = Fwd.eval_fitness(pop)
-        idx = sample(rng, 1:N, Weights(ws), 2N)
-        pop = Fwd.generation!(rng, pop, idx, ts)
-        if i % 100 == 0
-            pop, ts = Fwd.simplify!(pop, ts)
-        end
-    end
-    rts = Fwd.reverse_relabel(ts)
-    pyts = Fwd.to_tskit(rts)
-    xs = collect(pyts.breakpoints())
-    ps = pyts.diversity(mode="branch", windows=xs) ./ 2
-    xs, ps
-end
-
-_xs = map(x->x[2:end], first.(res))
-_ys = last.(res)
-xw, yw = Fwd.summarize_wins(_xs, _ys)
-plot(xw, vec(mean(yw, dims=1)), linetype=:steppre, color=:black, size=(700,250))
-hline!([2N], lw=2, legend=false)
-vline!(xs)
-
-# ----------------------
-N = 100
-L = 1
-C = 0.01
-s = 0.1
-h = 0.5
-u = s*h/4
-xs= [C/2]
-A = Architecture([Fwd.DiploidBiLocus(-s*h, -s, u) for _=1:L], xs)
-R = LinearMap(C)
-ts= Fwd.init_ts(2N, C) 
-x = [zeros(Bool, L) for _=1:2N]
-res = map(1:500) do rep
-    @info rep
-    ts  = Fwd.init_ts(2N, C) 
-    x   = [zeros(Bool, L) for _=1:2N]
-    pop = Fwd.DiploidWFPopulation(N=N, arch=A, recmap=R, x=x, nodes=collect(1:2N))
-    for i=1:20N
-        ws  = Fwd.eval_fitness(pop)
-        idx = sample(rng, 1:N, Weights(ws), 2N)
-        pop = Fwd.generation!(rng, pop, idx, ts)
-        if i % 100 == 0
-            pop, ts = Fwd.simplify!(pop, ts)
-        end
-    end
-    rts = Fwd.reverse_relabel(ts)
-    pyts = Fwd.to_tskit(rts)
-    xs = collect(pyts.breakpoints())
-    ps = pyts.diversity(mode="branch", windows=xs) ./ 2
-    xs, ps
-end
-
-_xs = map(x->x[2:end], first.(res))
-_ys = last.(res)
-xw, yw = Fwd.summarize_wins(_xs, _ys)
-plot(xw, vec(mean(yw, dims=1)), linetype=:steppre, color=:black, size=(700,250))
-hline!([2N], lw=2, legend=false)
-vline!(xs)
+plot(P0,P1,size=(500,200),margin=2Plots.mm)
 

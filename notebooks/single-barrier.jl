@@ -1,10 +1,10 @@
 using Random, Fwd, ProgressMeter, StatsBase, WrightDistribution
-using Plots; plotsdefault()
+using Plots, Serialization; plotsdefault()
 
-rng = Random.seed!(67)
-s   = 0.05
+NB  = 500
+s   = 10/NB
 u   = s/200
-m   = s/10
+m   = s/5
 C   = 0.1
 xs  = [C/2]
 L   = 1
@@ -13,8 +13,7 @@ AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
 AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
 MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
 MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
-NA  = 500
-NB  = 500
+NA  = 1
 nA = collect(1:NA)
 nB = collect(1:NB) .+ NA
 xA = [ ones(Int, 1) for _=1:NA]
@@ -22,26 +21,57 @@ xB = [zeros(Int, 1) for _=1:NB]
 popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
 popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
-ngen = 10^5
+ngen = 50NB
 
 rng = Random.seed!(22)
-pop, ts, qs = let pop=deepcopy(mpop), ts=Fwd.init_ts(pop)
-    qs = Matrix{Float64}(undef, ngen, 1)
-    @showprogress for i=1:ngen
-        pop = Fwd.generation!(rng, pop, ts);
-        qs[i,:] .= mean(pop.popB.x)
-        if i % 50 == 0 
-            pop, ts = Fwd.simplify!(pop, ts)
-        end
-    end
-    pop, ts, qs
+nrep = 100
+res = map(1:nrep) do _
+    pop, ts, qs = simulate!(rng, 
+        deepcopy(mpop), init_ts(mpop), ngen, x->mean(x.popB.x)[1])
 end
 
-stephist(vec(qs), norm=true, bins=0:0.02:1)
+stephist(vec(res[1][3]), norm=true, bins=0:0.02:1)
 plot!(x->pdf(Wright(-2NB*s, NB*u, NB*(u + m), 0.5), 1-x))  
 
-x, ta, tb, tab = Fwd.diffdiv(ts)
-plot(x, tab)
+tabs = map(res) do (_,ts,_)
+    x, ta, tb, tab = Fwd.diffdiv(ts)
+end
+
+#serialize("data/tabs-2025-11-24.jls", tabs)
+tabs = deserialize("data/tabs-2025-11-24.jls")
+
+q = m/s
+tb_sc(m, q, r) = 1 - 1/r + 1/(q*r) + 1/m
+
+x, tab = Fwd.summarize_wins(first.(tabs), last.(tabs))
+plot(x, vec(mean(tab, dims=1)), color=:lightgray)
+fr(z) = Fwd.recrate(abs(z-C/2))
+plot!(range(extrema(x)..., 200), z->(fr(z) + s)/(m*fr(z)), yscale=:log10, color=:black)
+#plot!(range(extrema(x)..., 200), z->(fr(z) + s - m)/(m*fr(z)), yscale=:log10, color=:black, ls=:dash)
+plot!(range(extrema(x)..., 200), z->tb_sc(m, q, fr(z)), yscale=:log10, color=:black, ls=:dash)
+hline!([ngen])
+
+x, tb = Fwd.summarize_wins(first.(tabs), getindex.(tabs,3))
+plot(x, vec(mean(tb, dims=1)), color=:lightgray)
+plot!(range(extrema(x)..., 200), z->tw_sc2(m, q, fr(z), NB), color=:black, ls=:dash)
+plot!(range(extrema(x)..., 200), z->tw_sc3(m, q, fr(z), NB), color=:red, ls=:dash)
+plot!(ylim=(0,ngen))
+
+function gettabat(tabs, x)
+    map(tabs) do (xs,tab)
+        j = findfirst(i->xs[i] < x <= xs[i+1], 1:length(xs)-1)
+        tab[j]
+    end
+end
+
+y = 0.02
+rr = Fwd.recrate(xs[1] - y)
+tx = gettabat(tabs, y)
+mean(tx)
+
+
+(-2*N^2*m^2*q^3*r + 4*N^2*m^2*q^2*r^2 - 2*N^2*m^2*q^2*r - 4*N^2*m^2*q*r^2 + 10*N^2*m^2*q*r - 6*N^2*m^2*r + 4*N^2*m*q^3*r^3 - 6*N^2*m*q^3*r^2 - 4*N^2*m*q^2*r^3 + 18*N^2*m*q^2*r^2 - 12*N^2*m*q*r^2 + 6*N^2*q^3*r^3 - 6*N^2*q^2*r^3 + 2*N*m^2*q^2*r - 4*N*m^2*q*r + 4*N*m^2*q - 4*N*m^2 + 2*N*m*q^3*r^2 - 2*N*m*q^2*r^2 + 3*N*m*q^2*r - 2*N*m*q*r^2 - 3*N*m*q*r - 3*N*m*r + 3*N*q^3*r^2 - 3*N*q^2*r^2 - 3*N*q*r^2 + 2*m*q^2*r - 2*m*q*r + 2*m*q - 2*m + 2*q^3*r - 2*q*r)/(r*(4*N^2*m^2*q^2*r - 4*N^2*m^2*q*r + 4*N^2*m*q^3*r^2 - 4*N^2*m*q^2*r^2 - 2*N*m^2 + 4*N*m*q^2*r - 6*N*m*q*r + 2*N*q^3*r^2 - 2*N*q^2*r^2 - m - q*r))
+
 
 # With MetaPop
 popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
@@ -236,4 +266,78 @@ end
 Wm = hcat(mean(ww)...)
 plot(xxs, Wm')
 
+
+
+# ----------------------------------------------------------------------
+# Haplotype blocks
+NB  = 500
+s   = 10/NB
+u   = s/200
+m   = s/5
+C   = 0.1
+xs  = [C/2]
+L   = 1
+R   = LinearMap(C)
+AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
+AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
+MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
+MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
+NA  = 1
+nA = collect(1:NA)
+nB = collect(1:NB) .+ NA
+xA = [ ones(Int, 1) for _=1:NA]
+xB = [zeros(Int, 1) for _=1:NB]
+popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
+popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
+mpop = Fwd.TwoPopOneWay(m, popA, popB)
+ngen = 50NB
+
+rng = Random.seed!(13)
+pop, ts, qs = simulate!(rng, 
+    deepcopy(mpop), init_ts(mpop), ngen, x->mean(x.popB.x)[1])
+
+stephist(qs)
+       
+ts = Fwd._add_grand_ancestor(ts)
+x, ta, tb, tab = Fwd.diffdiv(ts)
+plot(x, tab, yscale=:log10)
+plot!(x, tb)
+
+pts = to_tskit(ts)
+i = pts.samples(population=0)[1]
+j, k = sample(pts.samples(population=1), 2, replace=false)
+
+sts = pts.simplify([i,j,k])
+sx = collect(sts.breakpoints())
+tres = [x.copy() for x in sts.trees()][1:end-1]
+
+using NewickTree, SmoothTrex
+nts = map(x->readnw(x.newick()), tres)
+
+# three possible trees, defined by 
+# (1,2) = (B1,B2)
+# (1,3) = (B1,A)
+# (2,3) = (B2,A)
+
+tops = map(topologize, nts)
+
+rectangle(w, h, x, y) = Shape(x .+ [0,w,w,0], y .+ [0,0,h,h])
+
+plot(x, tab, size=(700,200), yscale=:log10)
+plot!(x, tb)
+for (j,cl) in enumerate([(1,2), (1,3), (2,3)])
+    for i=1:length(nts)
+        tree = nts[i]
+        x0 = sx[i]
+        x1 = sx[i+1]
+        node = getlca(tree, string.(cl)...)
+        top1 = length(getleaves(node)) == 2 
+        if top1 
+            t1 = distance(node[1])
+            t2 = distance(node)
+            plot!(rectangle(x1-x0, t2, x0, t1), color=j, line=false, alpha=0.5)
+        end
+    end
+end
+plot!()
 

@@ -1,10 +1,7 @@
 
-
-
-
 # L equally spaced loci with on a chromosome of a given map length with
 # a fixed Ls. To what extent can we disentangle L and s? Increasing L
-# and decreasing s, keeping Ls foxed, would not keep mₑ fixed, as the
+# and decreasing s, keeping Ls fixed, would not keep mₑ fixed, as the
 # latter depens also on linkage.
 
 using Random, Fwd, ProgressMeter, StatsBase, Serialization
@@ -24,23 +21,23 @@ LL = [5,10,20,30,40,50]
 res = map(LL) do L
     s = Ls/L
     xs = collect((C/2L):(C/L):(C-C/2L))
-    AA  = Architecture([BiAllelic(0.0) for _=1:L], xs)
-    AB  = Architecture([BiAllelic(u) for _=1:L], xs)
+    R   = LinearMap(C)
+    AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
+    AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
     MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
     MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
-    R   = LinearMap(C)
     nA = collect(1:NA)
     nB = collect(1:NB) .+ NA
     xA = [ ones(Int, L) for _=1:NA]
     xB = [zeros(Int, L) for _=1:NB]
     popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, 
-        gpm=MA, recmap=R, x=xA, nodes=nA)
+        gpm=MA, x=xA, nodes=nA)
     popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, 
-        gpm=MB, recmap=R, x=xB, nodes=nB)
+        gpm=MB, x=xB, nodes=nB)
     mpop = Fwd.TwoPopOneWay(m, popA, popB)
-    seed = rand(rng, 1:2^32)
     hmr = Fwd.hmrecrate(xs)
-    (seed, hmr, s, Fwd.simulation!(seed, mpop, C, L, ngen)...)
+    mpop, ts = Fwd.simulate!(rng, mpop, init_ts(mpop), ngen)
+    (hmr, s, mpop, ts)
 end
 
 models = map(LL) do L
