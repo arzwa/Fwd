@@ -37,15 +37,14 @@ getcopy(pop::WFPopulation{Diploid}, i) = (copy(pop.x[i]), copy(pop.x[pop.N+i]))
 ploidy(pop::WFPopulation) = _ploidy(pop.ploidy)
 nhaplotypes(pop::WFPopulation) = pop.N*ploidy(pop)
 
-init_ts(pop::WFPopulation; popid=0) = init_ts(nhaplotypes(pop), 
+init_ts(pop::WFPopulation; popid=0) = TS.init_ts(nhaplotypes(pop), 
     length(pop.arch.recmap), popid=popid)
 
-#eval_fitness(pop::WFPopulation) = map(i->fitness(pop.arch, pop[i]), 1:pop.N)
 eval_fitness(pop::WFPopulation) = map(i->exp(phenotype(pop.gpm, pop[i])), 1:pop.N)
 
 function simplify!(pop::WFPopulation, ts::TreeSequence)
     @unpack nodes, N = pop
-    sts = simplify(ts, nodes, keep_roots=true)
+    sts = TS.simplify(ts, nodes, keep_roots=true)
     nv = length(sts.nodes)
     pop.nodes .= collect(nv-nhaplotypes(pop)+1:nv)
     return pop, sts
@@ -81,7 +80,7 @@ function generation!(
     @assert length(idx) == 2N  "Biparental reproduction" 
     # new nodes to ts
     exnode = ts.nodes[nodes[1]]
-    ns = addnodes!(ts, length(nodes), Node(time(exnode)+1, popid))
+    ns = TS.addnodes!(ts, length(nodes), TS.Node(time(exnode)+1, popid))
     for k=1:N  # offspring individual k
         # offspring k has mother and father idx[k] and idx[N+k]
         generate_offspring!(rng, pop, k, idx[k], idx[N+k], ts, ns)

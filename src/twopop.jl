@@ -60,7 +60,7 @@ end
 function simplify!(pop::TwoPopOneWay, ts::TreeSequence)
     @unpack popA, popB = pop
     ns = active_nodes(pop)
-    sts = simplify(ts, ns, keep_roots=true)
+    sts = TS.simplify(ts, ns, keep_roots=true)
     #T = time(sts.nodes[end])
     # XXX the indices are not what I expected?
     #popA.nodes .= findall(x->time(x) == T && population(x) == 1, sts.nodes)
@@ -81,7 +81,7 @@ function init_ts(pop::TwoPopOneWay)
     tsb = init_ts(popB, popid=2)
     ns = [tsa.nodes; tsb.nodes]
     es = tsa.edges
-    cs = [tsa.children; tsb.children] 
+    cs = [tsa.adjlist; tsb.adjlist] 
     TreeSequence(ns, es, cs, tsa.L, true)
 end
 

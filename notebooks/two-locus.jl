@@ -1,7 +1,9 @@
-using Fwd, StatsBase, WrightDistribution, Plots; plotsdefault()
-using TwoLocusModels, Serialization, Barriers
+using Distributed
+@everywhere using Fwd, TreeSequences, StatsBase, WrightDistribution, Barriers, TwoLocusModels
+using Plots; plotsdefault()
+using Serialization
 
-function twolocus_cb(pop, i, j; states=[[0,0],[0,1],[1,0],[1,1]])
+@everywhere function twolocus_cb(pop, i, j; states=[[0,0],[0,1],[1,0],[1,1]])
     pm = proportionmap(map(x->x[[i,j]], pop.x))
     [haskey(pm, x) ? pm[x] : 0.0 for x in states]
 end
@@ -99,10 +101,11 @@ res = map(rss) do rs
         TAM = 1/Barriers.me(AM, xs[1]*0.99)
         ngen = ceil(Int64, 2TAM)
         @info ngen
-        res = map(1:10) do _
+        res = pmap(1:10) do _
             mpop = Fwd.TwoPopOneWay(m, deepcopy(popA), deepcopy(popB))
             mpop, ts, qs = simulate!(
-                mpop, init_ts(mpop), ngen, x->twolocus_cb(x.popB, 1, 2))
+                mpop, init_ts(mpop), ngen, x->twolocus_cb(x.popB, 1, 2), 
+                every=ngen÷1000)
         end
     end
 end
@@ -122,7 +125,7 @@ end
 #serialize("data/twolocus-2025-12-19.jls", (mss, rss, tres))
 mss, rss, tres = deserialize("data/twolocus-2025-12-19.jls")
 
-map(zip(tres, rss)) do (res_, rs)
+Ps = map(zip(tres, rss)) do (res_, rs)
     P = plot(title="\$r/s = $(round(rs, digits=2))\$")
     map(enumerate(zip(res_, mss))) do (i,(res__, ms))
         m   = ms*s
@@ -134,8 +137,22 @@ map(zip(tres, rss)) do (res_, rs)
         # --------------------------------
         xx, yb = res__
         plot!(P, xx, yb, color=:black, label="")
+        # estimate q by MC ---------------
+        mod = TwoLocusModels.HaploidMainlandIsland(
+            m=m, w=[1, 1-s, 1-s, (1-s)^2], c=r, u=u)
+        rng = Random.default_rng()
+        x = [NB, 0, 0, 0]
+        xm = x
+        nn = 1000000
+        for _=1:nn
+            x = generation(rng, mod, x)
+            xm += x
+        end
+        q1, q2, D = TwoLocusModels.qd((xm ./ NB) ./ nn)
+        @info q1, q2, D
         # --------------------------------
-        q1, q2, D = TwoLocusModels.BA11(m, s, s, r)
+        #q1, q2, D = TwoLocusModels.BA11(m, s, s, r)
+        #@info q1, q2, D
         # --------------------------------
         loci = [Barriers.DiploidLocus(2s, 0.5, u) for i=1:L]
         R = Fwd.rec_matrix(xs)
@@ -144,16 +161,17 @@ map(zip(tres, rss)) do (res_, rs)
         EM = Barriers.Equilibrium(M)
         Eq = 1 - EM.Ep[1]
         # --------------------------------
-        #AM = AeschbacherModel(m, [s for i=1:L], xs)
-        #plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="",
-        #    yscale=:log10, color=i, ls=:dash)
+        AM = AeschbacherModel(m, [s for i=1:L], xs)
+        plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="",
+            yscale=:log10, color=i, ls=:dot)
         ## --------------------------------
-        BP = Equilibrium(BPModel(m, [s, s], xs, NB, u))
+        BP = Equilibrium(BPModel(m=m, s=[s, s], xs=xs, Ne=NB, u=u))
+        BP.Ep .= 1 .- [q1, q2]
         plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="",
-            yscale=:log10, color=i, lw=1, ls=:dot)
+            yscale=:log10, color=i, lw=1, ls=:dash)
         # --------------------------------
         plot!(range(0, C, 500), x->scpred(m, xs, D, q1, q2, x), label="",
-            yscale=:log10, color=i, lw=3, alpha=0.2, 
+            yscale=:log10, color=i, lw=5, alpha=0.3, 
             legend=:topright)
         # --------------------------------
         #plot!(range(0, C, 500), 
@@ -162,45 +180,48 @@ map(zip(tres, rss)) do (res_, rs)
         #    label="\$m/s=$ms, q=$(round(q1, digits=3)), D=$(round(D, digits=2))\$",
         #    legend=:topright)
         # ---------------------------
-        plot!(range(0, C, 500), 
-            x->scqle(m, xs, Eq, Eq, s, s, x), 
-            yscale=:log10, color=i, lw=1,
-            label="\$m/s=$ms, q=$(round(q1, digits=3)), D=$(round(D, digits=2))\$",
-            legend=:topright)
+        #plot!(range(0, C, 500), 
+        #    x->scqle(m, xs, Eq, Eq, s, s, x), 
+        #    yscale=:log10, color=i, lw=1,
+        #    label="\$m/s=$ms, q=$(round(q1, digits=3)), D=$(round(D, digits=2))\$",
+        #    legend=:topright)
         # ---------------------------
         y1,y2 = ylims(P)
-        plot!(ylim=(-Inf,y2*5))
+        plot!(ylim=(-Inf,y2))
     end
     P
-end |> x->plot(x..., size=(800,450), 
+end 
+
+annotate!(Ps[1], 0., 10^4/3, text("\$m/s=0.5\$", 8, :left))
+annotate!(Ps[1], 0., 10^5/2, text("\$m/s=0.05\$", 8, :left))
+plot(Ps..., size=(620,380), 
     xlabel="map position (M)", ylabel="\$T\$", margin=3Plots.mm)
 
 
 
-NB  = 500
-s   = 10/NB
-u   = s/1000
-m   = s*0.5
-r   = s*1.0
-d   = Fwd.distance(r)
-C   = 5d
-xs  = [C/2-d/2, C/2+d/2]
-L   = 2
-R   = LinearMap(C)
-AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
-AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
-MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
-MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
-NA  = 1
-nA = collect(1:NA)
-nB = collect(1:NB) .+ NA
-xA = [ ones(Bool, L) for _=1:NA]
-xB = [zeros(Bool, L) for _=1:NB]
-popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
-popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
-ngen = 10^5
-
-res = map(1:50) do _
+res = pmap(1:10) do _
+    NB  = 500
+    s   = 10/NB
+    u   = s/1000
+    m   = s*0.5
+    r   = s*0.1
+    d   = Fwd.distance(r)
+    C   = 5d
+    xs  = [C/2-d/2, C/2+d/2]
+    L   = 2
+    R   = LinearMap(C)
+    AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
+    AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
+    MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
+    MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
+    NA  = 1
+    nA = collect(1:NA)
+    nB = collect(1:NB) .+ NA
+    xA = [ ones(Bool, L) for _=1:NA]
+    xB = [zeros(Bool, L) for _=1:NB]
+    popA = WFPopulation(ploidy=Haploid(), N=NA, arch=AA, gpm=MA, x=xA, nodes=nA)
+    popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
+    ngen = 10^6
     mpop = Fwd.TwoPopOneWay(m, deepcopy(popA), deepcopy(popB))
     mpop, ts, qs = simulate!(
         mpop, init_ts(mpop), ngen, x->twolocus_cb(x.popB, 1, 2))
@@ -216,11 +237,11 @@ DD = Q[:,1] .* Q[:,4] .- Q[:,2] .* Q[:,3]
 Q = [Q hcat(Q1, Q2, DD)]
 
 tbs = map(res) do (_,ts,_)
-    _ts = Fwd._add_grand_ancestor(ts)
+    _ts = TS._add_grand_ancestor(ts)
     # should make sure everything has coalesced...
-    Fwd.diffdiv(_ts)[[1,4]]
+    TS.diffdiv(_ts)[[1,4]]
 end
-xx, yy = Fwd.summarize_wins(tbs)
+xx, yy = TS.summarize_wins(tbs)
 yb = vec(mean(yy, dims=1))
 xx, yy, yb
 #serialize("data/twolocus-2025-12-10.jls", (xx,yy))
@@ -245,18 +266,19 @@ plot(xx, yb, xlim=xspan, linetype=:steppost, color=:gray, alpha=0.9,
     xlabel="map position (M)", ylabel="\$T\$", label="", margin=3Plots.mm)
 vline!([xs], legend=:topright, label="", size=(500,220))
 hline!([ngen], color=:black, ls=:dot, label="")
-AM = AeschbacherModel(m, [s for i=1:L], xs)
-plot!(range(0, C, 500), x->1/Barriers.me(AM, x), 
-    yscale=:log10, label="AB14", ls=:solid, color=1, lw=4, alpha=0.2)
-BP = Equilibrium(BPModel(m, [s for i=1:L], xs, NB, u))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), 
-    yscale=:log10, label="BP", color=1, lw=1, )
+#AM = AeschbacherModel(m, [s for i=1:L], xs)
+#plot!(range(0, C, 500), x->1/Barriers.me(AM, x), 
+#    yscale=:log10, label="AB14", ls=:solid, color=1, lw=4, alpha=0.2)
 plot!(range(0, C, 500), x->scpred(m, xs, D, q1, q2, x), 
-    yscale=:log10, label="SC det.", color=2, lw=1)
-plot!(range(0, C, 500), x->scqle(m, xs, q1, q2, s, s, x), 
-    yscale=:log10, label="SC QLE", color=2, lw=4, alpha=0.2)
+    yscale=:log10, label="SC det.", color=:black, lw=5, alpha=0.2)
 plot!(range(0, C, 500), x->scpred(m, xs, mn[5], mn[6], mn[7], x), 
-    yscale=:log10, label="SC MC", color=2, lw=1, ls=:dash)
+    yscale=:log10, label="SC MC", color=:black, lw=1)
+BP = Equilibrium(BPModel(m=m, s=[s for i=1:L], xs=xs, Ne=NB, u=u))
+plot!(range(0, C, 500), x->1/Barriers.me(BP, x), 
+    yscale=:log10, label="BP pred.", color=1, lw=1, )
+BP.Ep .= 1 .- mn[6:7]
+plot!(range(0, C, 500), x->1/Barriers.me(BP, x), 
+    yscale=:log10, label="BP MC", color=1, lw=1, ls=:dash )
 plot!(title="\$m/s = $(m/s), r/s=$(r/s), Ns=$(NB*s)\$")
 
 loci = [Barriers.DiploidLocus(2s, 0.5, u) for i=1:L]

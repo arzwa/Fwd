@@ -1,17 +1,16 @@
 __precompile__()
 module Fwd
 
-using Random, Reexport, Distributions, Parameters
+using Random
 import Random: AbstractRNG
-@reexport using Random
-using LinearAlgebra, StatsBase, Printf
-using ProgressMeter, DataStructures
-using PyCall
-const tskit = PyNULL()
-
-function __init__()
-    copy!(tskit, pyimport("tskit"))
-end
+using Distributions
+using Parameters
+#using LinearAlgebra
+using StatsBase
+using Printf
+using ProgressMeter
+using TreeSequences
+import TreeSequences as TS
 
 const Gb = 1_000_000_000
 const Mb = 1_000_000
@@ -27,8 +26,8 @@ include("gpm.jl")
 export BiAllelic, IntAllelic, HaploidLocus, HaploidTwoLocus, DiploidLocus
 export Architecture, GPMap
 
-include("ts.jl")
-export TreeSequence, reverse_relabel, simplify, to_tskit, from_tskit, draw_text
+#include("ts.jl")
+#export TreeSequence, reverse_relabel, simplify, to_tskit, from_tskit, draw_text
 
 include("wfpop.jl")
 export WFPopulation, Haploid, Diploid, generation!, init_ts

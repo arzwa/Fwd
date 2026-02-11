@@ -112,8 +112,8 @@ function recombine!(rng, tgt, src1, src2, recmap, xs, ts, nodes;
     while x0 < C′
         bp = nextbreakpoint(rng, recmap, bp)
         x1 = C + bp
-        e  = χ ? Edge(p1, c, x0, x1) : Edge(p2, c, x0, x1)
-        addedge!(ts, e) 
+        e  = χ ? TS.Edge(p1, c, x0, x1) : TS.Edge(p2, c, x0, x1)
+        TS.addedge!(ts, e) 
         # if bp is at `xs[i]`, than xs[i] is the last locus before the bp
         while i <= length(xs) && xs[i] <= x1 && xs[i] <= C′
             tgt[i] = χ ? src1[i] : src2[i]

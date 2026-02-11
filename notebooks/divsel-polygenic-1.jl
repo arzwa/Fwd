@@ -42,10 +42,10 @@ end
 
 function tab(tss, nse=2)
     tbs = map(tss) do ts
-        _ts = Fwd._add_grand_ancestor(ts)
-        Fwd.diffdiv(_ts)[[1,4]]
+        _ts = TS._add_grand_ancestor(ts)
+        TS.diffdiv(_ts)[[1,4]]
     end
-    xx, yy = Fwd.summarize_wins(tbs)
+    xx, yy = TS.summarize_wins(tbs)
     ys = map(eachcol(yy)) do y
         # Assume coalescence times are Geometrically distributed with 
         # a noninformative Beta prior for the parameter of the
@@ -74,7 +74,7 @@ P1 = plot(xx, yb, ribbon=(yl, yu), color=:lightgray,
     size=(700,300), title=title, 
     xlabel="map position (M)", 
     ylabel="\$T\$", margin=5Plots.mm)
-BP = Equilibrium(BPModel(m, fill(s, L), xs, NB, u))
+BP = Equilibrium(BPModel(m=m, s=fill(s, L), xs=xs, Ne=float(NB), u=u))
 plot!(range(0, C, 500), x->1/Barriers.me(BP, x),
     yscale=:log10, lw=1,label="BP, \$E[p]\$")
 _BP = deepcopy(BP); _BP.Ep .= pp 

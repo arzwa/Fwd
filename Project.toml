@@ -6,7 +6,6 @@ authors = ["arzwa <arthur.zwaenepoel@gmail.com>"]
 [deps]
 Barriers = "be6cf53a-a3bb-40b3-b177-46b1316354c6"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
-DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -27,6 +26,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TreeSequences = "a9c1f73b-4c13-47b7-b5be-16be85851538"
 TwoLocusModels = "fdb76c74-f730-4ee8-bbd9-870e42cb01e4"
 WrightDistribution = "f1082b7d-a10b-4e22-9c8a-8cfeebeb2a60"
 
@@ -36,7 +36,6 @@ TwoLocusModels = {path = "../TwoLocusModels"}
 WrightDistribution = {path = "../WrightDistribution"}
 
 [compat]
-DataStructures = "0.18.22"
 Graphs = "1.13.0"
 Literate = "2.20.1"
 Plots = "1.41.1"

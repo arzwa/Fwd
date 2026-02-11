@@ -88,13 +88,13 @@ function init_ts(pop::MetaPop)
     tss = map(i->init_ts(pop[i], popid=i), 1:length(pop))
     ns = mapreduce(ts->ts.nodes, vcat, tss)
     es = tss[1].edges  # empty anyhow
-    cs = mapreduce(ts->ts.children, vcat, tss)
+    cs = mapreduce(ts->ts.adjlist, vcat, tss)
     TreeSequence(ns, es, cs, tss[1].L, true)
 end
 
 function simplify!(pop::MetaPop, ts::TreeSequence)
     ns = active_nodes(pop)
-    sts = simplify(ts, ns, keep_roots=true)
+    sts = TS.simplify(ts, ns, keep_roots=true)
     nv = length(sts.nodes)
     for i=length(pop):-1:1
         Ni = length(pop[i].nodes)
@@ -103,4 +103,28 @@ function simplify!(pop::MetaPop, ts::TreeSequence)
         nv -= Ni
     end
     return pop, sts
+end
+
+# split a population in two: sample NA individuals with replacement from
+# pop to constitute popA, NB to constitute popB. Update the ts accordingly.
+# This uses the metapop migration implementation (we migrate from the
+# ancestral in the new subpopulations.
+function splitpop(pop, ts, Ns; popids=(1,2))
+    pops = map(zip(Ns, popids)) do (N, i)
+        n = _ploidy(pop.ploidy)*N
+        pop_ = reconstruct(pop, 
+            x  = similar(pop.x, n), 
+            _x = similar(pop.x, n),
+            nodes = similar(pop.nodes, n),
+            N = N)
+        idx = sample(1:pop.N, N, replace=true) 
+        for k in 1:N
+            mig = Migrant(i, k, 
+                getnodes(pop, idx[k]), 
+                getcopy(pop, idx[k]))
+            _migrate!(pop_, mig)
+        end
+        pop_ = reconstruct(pop_, _x=copy.(pop_.x))
+        pop_
+    end
 end
