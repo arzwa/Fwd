@@ -2,7 +2,7 @@
 using Plots, Barriers, Distributions; plotsdefault()
 
 rng = Random.seed!(672)
-L   = 10 
+L   = 30 
 s   = 0.1/L
 Ns  = 5.
 u   = s/200
@@ -131,9 +131,9 @@ plot!(range(0, C, 500), x->Barriers.me(_BP, x), label="")
 
 
 # Check swamping threshold prediction
-mss = range(0.05, 2.5, 100)
+mss = range(0.05, 5, 100)
 ps1 = map(mss) do ms
-    BP = Equilibrium(BPModel(m=ms*s, s=fill(s, L), xs=xs, Ne=float(NB), u=u))
+    BP = Equilibrium(BPModel(m=ms*s, s=fill(s, L), xs=xs, Ne=float(NB), u=u), nmax=10)
     BP.Ep
 end |> x->hcat(x...)
 ps2 = map(mss) do ms
@@ -144,29 +144,29 @@ ps2 = map(mss) do ms
     M.Ep
 end |> x->hcat(x...)
 
-i = 3
+i = 6
 plot(mss, ps1[i,:])
 plot!(mss, ps2[i,:])
 
-ngen = 100_000
+ngen = 500_000
 mss2 = range(extrema(mss)..., 10)
 res2 = pmap(mss2) do ms
     seed = rand(1:2^32)
     rng = Random.seed!(seed)
     mpop = Fwd.TwoPopOneWay(ms*s, deepcopy(popA), deepcopy(popB))
-    every = ceil(Int, ngen/1000)
+    every = ngen÷2000
     mpop, ts, qs = simulate!(mpop, init_ts(mpop), ngen,
         x->mean(x.popB.x), every=every)
     seed, mpop, ts, qs
 end
 
-P = 1 .- mapreduce(mean ∘ last, hcat, res2)
+P = 1 .- mapreduce(mean ∘ (x->x[500:end]) ∘ last, hcat, res2)
 map([1,3,6,9]) do i
     plot(mss, ps1[i,:], title="locus $i", xlabel="\$m/s\$", ylabel="\$p\$", label="BP")
     plot!(mss, ps2[i,:], label="ZSF")
     scatter!(mss2, P[i,:], legend=i==1 ? :topright : false, 
         label="simulation", color=:black, ms=2)
-    vline!([m/s], color=:lightgray, ls=:dash, label="")
-end |> x->plot(x..., size=(500,400))
+end |> x->plot(x..., size=(700,500))
+
 
 

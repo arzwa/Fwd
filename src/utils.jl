@@ -12,12 +12,14 @@ function simulate!(rng::AbstractRNG, pop::AbstractPop, ngen::Int; show_progress=
     return pop
 end
 
-function simulate!(rng::AbstractRNG, pop::AbstractPop, ngen::Int, cb::Function; show_progress=true)
+function simulate!(rng::AbstractRNG, pop::AbstractPop, ngen::Int, cb::Function; show_progress=true, every=1)
     ys = [cb(pop)]
     p = Progress(ngen; enabled=show_progress)
     for t=1:ngen
         pop = Fwd.generation!(rng, pop)
-        push!(ys, cb(pop))
+        if t % every == 0
+            push!(ys, cb(pop))
+        end
         next!(p)
     end
     return pop, ys

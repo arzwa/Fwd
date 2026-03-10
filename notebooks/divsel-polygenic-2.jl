@@ -6,6 +6,7 @@ using Serialization, Plots; plotsdefault()
 using Barriers
 using LinearAlgebra
 import TreeSequences as TS
+import MCMCChains
 
 function estimate_coaltimes(tss, ci=0.95, pa=0., pb=0.; idx=4)
     q0 = (1-ci)/2
@@ -34,9 +35,9 @@ function estimate_coaltimes(tss, ci=0.95, pa=0., pb=0.; idx=4)
 end
 
 
-rng = Random.seed!(155)
-Ls  = 0.1
-L   = 25
+rng = Random.seed!(135)
+Ls  = 0.25
+L   = 50
 s̄   = Ls/L
 dfe = Exponential(s̄)
 ss  = rand(rng, dfe, L)
@@ -45,35 +46,43 @@ ss .*= s̄/mean(ss)
 zs  = [0.0 ; cumsum(rand(rng, Dirichlet(L, α)))] 
 ys  = [(zs[i] + zs[i+1])/2 for i=1:L]
 u    = s̄/200
-m    = s̄
 NA   = 1
 Ns   = 5. 
 NB   = ceil(Int64, Ns/s̄)
 loci = [Barriers.DiploidLocus(2ss[i], 0.5, u) for i=1:L]
-title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns m/s̄
 
-map([0.1, 0.25, 0.5, 1.0]) do C
-    xs = ys .* C
-    R = Fwd.rec_matrix(xs)
-    A = Barriers.Architecture(loci, xs, R)
-    M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
-    EM = Barriers.Equilibrium(M);
-    AM = AeschbacherModel(m, ss, xs)
-    BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=float(NB), u=u))
-    P = plot(range(0, C, 500),  x->1/Barriers.me(EM, x), yscale=:log10)
-    plot!(range(0, C, 500), x->1/Barriers.me(AM, x))
-    plot!(range(0, C, 500), x->1/Barriers.me(BP, x))
-    hline!([200000], ls=:dot, color=:lightgray)
-end |> x->plot(x..., layout=(2,2), size=(800,400))
+mss = [1, 1.5, 2]
+map(mss) do ms
+    m = ms*s̄
+    map([0.25, 0.5, 1.0]) do C
+        xs = ys .* C
+        R = Fwd.rec_matrix(xs)
+        A = Barriers.Architecture(loci, xs, R)
+        M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
+        EM = Barriers.Equilibrium(M);
+        AM = AeschbacherModel(m, ss, xs)
+        BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=float(NB), u=u), α=0.2)
+        P = plot(range(0, C, 500),  x->1/Barriers.me(EM, x), title="\$C=$C, m/\\bar{s}=$ms\$", 
+            label="ZSF24", yscale=:log10, legend=C==1.0 ? :topright : false)
+        plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="AB14")
+        plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
+        plot!(ylim=(50,3*10^6), xlabel="map position", 
+            ylabel="\$T\$", left_margin=3Plots.mm, bottom_margin=5Plots.mm)
+    #    hline!([200000], ls=:dot, color=:lightgray, label="", ylim=(1000, 2*10^6))
+    end |> x->plot(x..., layout=(1,3), size=(900,220))
+end |> x->plot(x..., layout=(length(mss), 1), size=(900,220*length(mss)))
+
+Fwd.rec_matrix(ys .* 0.25) ./ s̄
     
 #ngen ~ 10 × max cross-pop coalescence time
 #minme = quantile(map(x->Barriers.me(EM, x), range(0, C, 100)), 0.05)
 #ngen = ceil(Int, (10 / minme * 1e-4)) * 10^4  
 #ngen = 200_000
-nrep = 10
-
-res = map([0.25]) do C 
-    ngen = 1_000_000
+nrep = 5
+ms = 1.5
+m = ms*s̄
+res = map([0.25, 0.5, 1.0]) do C 
+    ngen = 2_000_000
     res = pmap(1:nrep) do _
         xs  = ys .* C
         R   = LinearMap(C)
@@ -93,34 +102,39 @@ res = map([0.25]) do C
     end
 end
 
-serialize("data/2026-02-03-b.jls", res)
+serialize("data/2026-03-05-ms1.5.jls", res)
 
-res = deserialize("data/2026-02-03-b.jls")
-Ts = map(res) do X
-    estimate_coaltimes(getindex.(X, 2), idx=4)
+data = [
+    (ms=1.0, res=deserialize("data/2026-03-05-ms1.0.jls")),
+    (ms=1.5, res=deserialize("data/2026-03-05-ms1.5.jls"))
+]
+
+Tss = map(data) do x
+    Ts = map(x.res) do X
+        estimate_coaltimes(getindex.(X, 2), idx=4)
+    end
 end
 
-Qs = map(res) do X
-    mean(mapreduce(mean, hcat, last.(X)), dims=2) |> vec
+Qss = map(data) do x
+    Qs = map(x.res) do X
+        Q = map(last.(X)) do ys
+            Q = hcat(ys...)
+        end |> Q->hcat(Q...)
+        se = mcse.(eachrow(Q))
+        mn = vec(mean(Q, dims=2))
+        mn, se
+    end
 end
 
-k = 1
-Cs = [0.25,1.0]
-plot(Ts[k][1], Ts[k][2], ribbon=Ts[k][3:4], yscale=:log10,
-    framestyle=:default, color=:lightgray, ylabel="\$T\$", 
-    margin=4Plots.mm, xlabel="map position (M)", xlim=(0,Cs[k]*1.01),)
-#hline!([1/m], color=:lightgray, ls=:dash)
-sticks!(twinx(), ys .* Cs[k], ss, framestyle=:default, ylim=(0,0.02),
-    color=:firebrick, lw=3, alpha=0.3, ylabel="\$s\$", 
-    xlabel="", title=title, size=(600,200), xlim=(0,Cs[k]*1.01))
-
-Cs = [0.25,]
-PP = map(enumerate(Ts)) do (i,(xx, yb, yl, yu))
+ms = 1; m = ms*s̄
+Cs = [0.25,0.5,1]
+title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns ms
+PP = map(enumerate(Tss[1])) do (i,(xx, yb, yl, yu))
     P1 = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8,
-        label="", legend=:topright, 
+        label="", legend=i==1 ? :topleft : false, 
         size=(600,500), title=i==1 ? title : "", 
         xlabel="map position (M)", yscale=:log10,
-        ylabel="\$T\$", margin=5Plots.mm)
+        ylabel="\$T\$", margin=1Plots.mm)
     C = Cs[i]
     xs = ys .* C
     R = Fwd.rec_matrix(xs)
@@ -128,19 +142,61 @@ PP = map(enumerate(Ts)) do (i,(xx, yb, yl, yu))
     M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
     EM = Barriers.Equilibrium(M);
     AM = AeschbacherModel(m, ss, xs)
-    BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=NB, u=u))
+    BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=NB, u=u), α=0.2)
     plot!(range(0, C, 500),  x->1/Barriers.me(EM, x), yscale=:log10, alpha=0.8, label="ZSF24")
     plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="AB14", alpha=0.8)
     plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP", alpha=0.8)
-    hline!([200000], ls=:dot, color=:lightgray, label="")
-    qs = Qs[i]
+    qs, se = Qss[1][i]
     P2 = scatter(qs, 1 .- EM.Ep, title="map length $(Cs[i])", ms=2, label="ZSF24")
     scatter!(qs, 1 .- BP.Ep, ms=2, label="BP", legend=:bottomright)
+#    P2 = scatter(qs, 1 .- EM.Ep, xerr=3se, msc=1, lw=1, title="map length $(Cs[i])", ms=2, label="ZSF24")
+#    scatter!(qs, 1 .- BP.Ep, ms=2, xerr=3se, msc=2, lw=1, label="BP", legend=:bottomright)
     plot!(x->x, color=:lightgray, ls=:dot, label="", 
         xlabel="\$\\hat{q}\$ (simulation)", 
         ylabel="\$\\mathbb{E}[q]\$", xlim=(0,1), ylim=(0,1))
-    plot(P1, P2, layout=grid(1,2,widths=[0.75,0.25]))
-end |> x->plot(x..., layout=(length(x),1), size=(700,200*length(x)))
+    plot(P1, P2, layout=grid(1,2,widths=[0.8,0.2]))
+end |> x->plot(x..., layout=(length(x),1), size=(750,200*length(x)))
+
+# with foxus on a region
+PP = map(enumerate(data)) do (j,Y)
+    Ts = Tss[j]
+    Qs = Qss[j]
+    ms = Y.ms
+    m = ms*s̄
+    Cs = [0.25,0.5,1]
+    title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns ms
+    map(enumerate(Ts)) do (i,(xx, yb, yl, yu))
+        P1 = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8, lw=0, la=0.,
+            label="", legend=i==1 ? :topleft : false, 
+            size=(600,500), title=i==1 ? title : "", 
+            xlabel="map position (M)", yscale=:log10,
+            ylabel="\$T\$", margin=1Plots.mm)
+        C = Cs[i]
+        xs = ys .* C
+        R = Fwd.rec_matrix(xs)
+        A = Barriers.Architecture(loci, xs, R)
+        M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
+        EM = Barriers.Equilibrium(M);
+        AM = AeschbacherModel(m, ss, xs)
+        BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=NB, u=u), α=0.2)
+        plot!(range(0, C, 500),  x->1/Barriers.me(EM, x), yscale=:log10, alpha=0.8, label="ZSF24")
+        plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="AB14", alpha=0.8)
+        plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP", alpha=0.8)
+        qs, se = Qs[i]
+        x0, x1 = (0.105, 0.19) .* C
+        P1b = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8, lw=0, la=0.,
+            xlabel="map position (M)", yscale=:log10, xlim=(x0,x1))
+        plot!(range(x0, x1, 200),  x->1/Barriers.me(EM, x), yscale=:log10, alpha=0.8, label="ZSF24")
+        plot!(range(x0, x1, 200), x->1/Barriers.me(AM, x), label="AB14", alpha=0.8)
+        plot!(range(x0, x1, 200), x->1/Barriers.me(BP, x), label="BP", alpha=0.8)
+        P2 = scatter(qs, 1 .- EM.Ep, title="map length $(Cs[i])", ms=2, label="ZSF24")
+        scatter!(qs, 1 .- BP.Ep, ms=2, label="BP", legend=i == 1 ? :bottomright : false)
+        plot!(x->x, color=:lightgray, ls=:dot, label="", 
+            xlabel="\$\\hat{q}\$ (simulation)", 
+            ylabel="\$\\mathbb{E}[q]\$", xlim=(0,1), ylim=(0,1))
+        plot(P1, P1b, P2, layout=grid(1,3,widths=[0.6,0.2,0.2]))
+    end |> x->plot(x..., layout=(length(x),1), size=(850,200*length(x)))
+end
 
 Ps = let Ps = [plot() for i=1:L]
     map(1:1) do j
@@ -201,7 +257,7 @@ Ps = let Ps = [plot() for i=1:L]
             plot!(P, range(0,1,200), x->logpdf(d, x), color=col, ls=:dash)
             vline!([mean(d)], color=col, ls=:dash)
             y0, y1 = ylims(P)
-            plot!(P, ylims=(-4, y1))
+            plot!(P, ylims=(-8, y1))
         end
     end
     Ps
