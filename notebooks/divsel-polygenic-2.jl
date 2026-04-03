@@ -1,12 +1,12 @@
 
-
-using Distributed; addprocs(10)
+using Distributed#; addprocs(10)
 @everywhere using Random, Fwd, ProgressMeter, StatsBase, Distributions
 using Serialization, Plots; plotsdefault()
 using Barriers
 using LinearAlgebra
+using Parameters
 import TreeSequences as TS
-import MCMCChains
+import MCMCChains: mcse
 
 function estimate_coaltimes(tss, ci=0.95, pa=0., pb=0.; idx=4)
     q0 = (1-ci)/2
@@ -50,6 +50,10 @@ NA   = 1
 Ns   = 5. 
 NB   = ceil(Int64, Ns/s̄)
 loci = [Barriers.DiploidLocus(2ss[i], 0.5, u) for i=1:L]
+
+# C = 0.25 is very tight linkage...
+C = 0.5
+Fwd.rbar(ys * C)
 
 mss = [1, 1.5, 2]
 map(mss) do ms
@@ -102,7 +106,7 @@ res = map([0.25, 0.5, 1.0]) do C
     end
 end
 
-serialize("data/2026-03-05-ms1.5.jls", res)
+#serialize("data/2026-03-05-ms1.5.jls", res)
 
 data = [
     (ms=1.0, res=deserialize("data/2026-03-05-ms1.0.jls")),
@@ -112,6 +116,12 @@ data = [
 Tss = map(data) do x
     Ts = map(x.res) do X
         estimate_coaltimes(getindex.(X, 2), idx=4)
+    end
+end
+
+Tsw = map(data) do x
+    Ts = map(x.res) do X
+        estimate_coaltimes(getindex.(X, 2), idx=3)
     end
 end
 
@@ -126,10 +136,12 @@ Qss = map(data) do x
     end
 end
 
-ms = 1; m = ms*s̄
+k = 1
+ms = data[k].ms
+m = ms*s̄
 Cs = [0.25,0.5,1]
 title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns ms
-PP = map(enumerate(Tss[1])) do (i,(xx, yb, yl, yu))
+PP = map(enumerate(Tss[k])) do (i,(xx, yb, yl, yu))
     P1 = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8,
         label="", legend=i==1 ? :topleft : false, 
         size=(600,500), title=i==1 ? title : "", 
@@ -157,7 +169,42 @@ PP = map(enumerate(Tss[1])) do (i,(xx, yb, yl, yu))
     plot(P1, P2, layout=grid(1,2,widths=[0.8,0.2]))
 end |> x->plot(x..., layout=(length(x),1), size=(750,200*length(x)))
 
-# with foxus on a region
+# within pop coal time
+k = 1
+ms = data[k].ms
+m = ms*s̄
+Cs = [0.25,0.5,1]
+title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns ms
+PP = map(enumerate(Tsw[k])) do (i,(xx, yb, yl, yu))
+    P1 = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8,
+        label="", legend=i==1 ? :topleft : false, 
+        size=(600,500), title=i==1 ? title : "", 
+        xlabel="map position (M)", yscale=:log10,
+        ylabel="\$T\$", margin=1Plots.mm)
+    C = Cs[i]
+    xs = ys .* C
+    R = Fwd.rec_matrix(xs)
+    A = Barriers.Architecture(loci, xs, R)
+    M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
+    EM = Barriers.Equilibrium(M);
+    AM = AeschbacherModel(m, ss, xs)
+    BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=NB, u=u), α=0.2)
+    tw(me) = NB*(3 + 2me*NA)/(1 + 2me*NB)
+    plot!(range(0, C, 500),  x->tw(Barriers.me(EM, x)), yscale=:log10, alpha=0.8, label="ZSF24")
+    plot!(range(0, C, 500), x->tw(Barriers.me(AM, x)), label="AB14", alpha=0.8)
+    plot!(range(0, C, 500), x->tw(Barriers.me(BP, x)), label="BP", alpha=0.8)
+    qs, se = Qss[1][i]
+    P2 = scatter(qs, 1 .- EM.Ep, title="map length $(Cs[i])", ms=2, label="ZSF24")
+    scatter!(qs, 1 .- BP.Ep, ms=2, label="BP", legend=:bottomright)
+#    P2 = scatter(qs, 1 .- EM.Ep, xerr=3se, msc=1, lw=1, title="map length $(Cs[i])", ms=2, label="ZSF24")
+#    scatter!(qs, 1 .- BP.Ep, ms=2, xerr=3se, msc=2, lw=1, label="BP", legend=:bottomright)
+    plot!(x->x, color=:lightgray, ls=:dot, label="", 
+        xlabel="\$\\hat{q}\$ (simulation)", 
+        ylabel="\$\\mathbb{E}[q]\$", xlim=(0,1), ylim=(0,1))
+    plot(P1, P2, layout=grid(1,2,widths=[0.8,0.2]))
+end |> x->plot(x..., layout=(length(x),1), size=(750,200*length(x)))
+
+# with focus on a region
 PP = map(enumerate(data)) do (j,Y)
     Ts = Tss[j]
     Qs = Qss[j]
@@ -196,7 +243,48 @@ PP = map(enumerate(data)) do (j,Y)
             ylabel="\$\\mathbb{E}[q]\$", xlim=(0,1), ylim=(0,1))
         plot(P1, P1b, P2, layout=grid(1,3,widths=[0.6,0.2,0.2]))
     end |> x->plot(x..., layout=(length(x),1), size=(850,200*length(x)))
-end
+end 
+
+PP = map(enumerate(data)) do (j,Y)
+    Ts = Tsw[j]
+    Qs = Qss[j]
+    ms = Y.ms
+    m = ms*s̄
+    Cs = [0.25,0.5,1]
+    title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns ms
+    map(enumerate(Ts)) do (i,(xx, yb, yl, yu))
+        P1 = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8, lw=0, la=0.,
+            label="", legend=i==1 ? :topleft : false, 
+            size=(600,500), title=i==1 ? title : "", 
+            xlabel="map position (M)", yscale=:log10,
+            ylabel="\$T\$", margin=1Plots.mm)
+        C = Cs[i]
+        xs = ys .* C
+        R = Fwd.rec_matrix(xs)
+        A = Barriers.Architecture(loci, xs, R)
+        M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
+        EM = Barriers.Equilibrium(M);
+        AM = AeschbacherModel(m, ss, xs)
+        BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=NB, u=u), α=0.2)
+        tw(me) = NB*(3 + 2me*NA)/(1 + 2me*NB)
+        plot!(range(0, C, 500), x->tw(Barriers.me(EM, x)), yscale=:log10, alpha=0.8, label="ZSF24")
+        plot!(range(0, C, 500), x->tw(Barriers.me(AM, x)), label="AB14", alpha=0.8)
+        plot!(range(0, C, 500), x->tw(Barriers.me(BP, x)), label="BP", alpha=0.8)
+        qs, se = Qs[i]
+        x0, x1 = (0.105, 0.19) .* C
+        P1b = plot(xx, yb, ribbon=(yl, yu), color=:gray, alpha=0.8, lw=0, la=0.,
+            xlabel="map position (M)", yscale=:log10, xlim=(x0,x1))
+        plot!(range(x0, x1, 200),  x->tw(Barriers.me(EM, x)), yscale=:log10, alpha=0.8, label="ZSF24")
+        plot!(range(x0, x1, 200), x->tw(Barriers.me(AM, x)), label="AB14", alpha=0.8)
+        plot!(range(x0, x1, 200), x->tw(Barriers.me(BP, x)), label="BP", alpha=0.8)
+        P2 = scatter(qs, 1 .- EM.Ep, title="map length $(Cs[i])", ms=2, label="ZSF24")
+        scatter!(qs, 1 .- BP.Ep, ms=2, label="BP", legend=i == 1 ? :bottomright : false)
+        plot!(x->x, color=:lightgray, ls=:dot, label="", 
+            xlabel="\$\\hat{q}\$ (simulation)", 
+            ylabel="\$\\mathbb{E}[q]\$", xlim=(0,1), ylim=(0,1))
+        plot(P1, P1b, P2, layout=grid(1,3,widths=[0.6,0.2,0.2]))
+    end |> x->plot(x..., layout=(length(x),1), size=(850,200*length(x)))
+end 
 
 Ps = let Ps = [plot() for i=1:L]
     map(1:1) do j
@@ -301,148 +389,6 @@ Ps = let Ps = [plot() for i=1:L]
 end
 plot(Ps..., layout=(5,5), size=(900,700))
 
-# Coarse approximations ... (deprecated)
-C  = 0.25 
-nwin = 200
-Δ  = step(range(0, C, nwin+1))
-Δs = fill(Δ, nwin)
-Xs = fit(Histogram, ys .* C, 0:Δ:C).weights
-sw = fit(Histogram, ys .* C, weights(ss), 0:Δ:C).weights  
-sw[isnan.(sw)] .= 0.0
-
-CM = Barriers.CoarseModel2(X=Xs, Δ=Δs, m=m, u=u, s=sw, λ=1/NB) 
-_gff, _CM = Barriers.gff(CM)
-mec = _gff .* m
-
-bs = 0:Δ:C-Δ
-plot(bs, _gff, line=:steppost)
-plot!(range(0, C, 500), x->Barriers.me(EM, x)/m, color=:black)
-plot!(twinx(), bs, sw, line=:steppost, fill=true, alpha=0.5, color=:lightgray)
-
-xy = map(X->Fwd.diffdiv(Fwd._add_grand_ancestor(X[2]), windows=collect(0:Δ:C))[[1,4]], res)
-x, Y = Fwd.summarize_wins(first.(xy), last.(xy))
-y = vec(mean(Y, dims=1))
-
-plot(x, y, linetype=:steppre, color=:lightgray, alpha=1)
-plot!(bs, 1 ./ mec, yscale=:log10, linetype=:steppost)
-plot!(range(0, C, 500), x->1/Barriers.me(EM, x))
-
-#CM = Barriers.CoarseModel(X=ones(length(Y)), Δ=Δs, s=Y, m=m, u=u, λ=0.)
-#mec = m .* Barriers.gff(CM)
-#plot!(bs, 1 ./ mec, linetype=:steppost, label="coarse 3")
-
-zs = fit(Histogram, xs, weights(EM.Ep), 0:Δ:C).weights ./ Xs
-Ep = _CM.Ep
-Ep[Ep .== 0.0] .= NaN
-plot(bs, _CM.Ep)
-plot!(bs, zs)
-
-sd = mean(ss .* EM.Ep)
-plot(x, y, yscale=:log10, linetype=:steppre, color=:gray, alpha=0.5, label="")
-plot!(range(0, C, 500), x->1/Barriers.me(EM, x), label="Zwaenepoel et al. 2024")
-plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="Aeschbacher et al. 2017")
-bs = 0:Δ:C-Δ
-CM = Barriers.CoarseModel(X=Xs, Δ=Δs, s=sw, m=m, u=u, λ=0.)
-mec = m .* Barriers.gff(CM)
-plot!(bs, 1 ./ mec, linetype=:steppost, label="Approx. 1")
-#Y = fit(Histogram, xs, weights(ss .* EM.Ep), 0:Δ:C).weights
-#CM = Barriers.CoarseModel(X=ones(length(Y)), Δ=Δs, s=Y, m=m, u=u, λ=0.)
-#mec = m .* Barriers.gff(CM)
-#plot!(bs, 1 ./ mec, linetype=:steppost, label="hack")
-CM = Barriers.CoarseModel2(X=Xs, Δ=Δs, m=m, u=u, s=sw, λ=1/NB) 
-gff, _CM = Barriers.gff(CM)
-mec = gff .* m
-plot!(bs, 1 ./ mec, linetype=:steppost, label="Approx. 2")
-plot!(legend=:outertopright, size=(1000,300))
-
-
-# Y is Ls in windows
-Y = fit(Histogram, xs, weights(ss), 0:Δ:C).weights
-@assert sum(Y) ≈ sum(ss)
-
-gg = map(1:nwin) do j
-    loggj = 0.
-    for i=1:nwin 
-#        i == j && continue
-        rij = Fwd.recrate(abs(i-j)*Δ)
-        loggj -= Y[i]/(m + s̄ + rij)
-    end
-    loggj
-end
-
-P1 = plot(x, (1 ./ (y .- NA)) ./ m, linetype=:steppre, color=:gray, alpha=0.5)
-plot!(Δ:Δ:C, exp.(gg), linetype=:steppre, color=:black)
-plot!(bs, mec ./ m, linetype=:steppost)
-
-
-# Zoom in
-
-
-dd = map(X->Fwd.diffdiv(Fwd._add_grand_ancestor(X[2])), res)
-xy = map(x->x[[1,4]], dd)
-Q = mapreduce(x->vec(mean(x, dims=1)), hcat,getindex.(res, 3))
-x, Y = Fwd.summarize_wins(first.(xy), last.(xy))
-y = vec(mean(Y, dims=1))
-
-CM = Barriers.CoarseModel2(X=Xs, Δ=Δs, m=m, u=u, s=sw, λ=1/NB) 
-_gff, _CM = Barriers.gff(CM)
-mec = _gff .* m
-mm = mean(mec)
-
-mesc(m, r, p) = m*r*(1-p)/(m*p + r*(1-p))
-
-function mescx(x, m, Ep, xs)
-    i = argmin(abs.(xs .- x))
-    p = Ep[i]
-    r = Fwd.recrate(abs(xs[i] - x))
-    mesc(m, r, p)
-end
-
-function tc(x, m, Ep, xs; rmax=Inf)
-    i = argmin(abs.(xs .- x))
-    p = Ep[i]; q=1-p
-    r = Fwd.recrate(abs(xs[i] - x))
-    r <= rmax ? (1/r)*(p/q) + 1/m : 1/m
-end
-
-
-xspan = (0.0, 0.05) .+ 0.43 
-plot(x,y, yscale=:log10, xlim=xspan, 
-    framestyle=:default, color=:black)
-plot!(bs, 1 ./ mec, color=:teal, line=:steppost)
-hline!([1/mean(mec)], color=:teal, ls=:dash)
-plot!(range(xspan..., 200), 
-    x->tc(x, Barriers.me(EM,x), EM.Ep, xs), color=:orange,lw=2)
-plot!(range(xspan..., 200), 
-    x->1/Barriers.me(AM, x), color=:cyan,lw=2)
-sticks!(twinx(), xs, EM.Ep, color=:firebrick, 
-    alpha=0.5, lw=3, xlim=xspan, framestyle=:default)
-
-xspan = (0.0, C)
-plot(x,y, yscale=:log10, xlim=xspan, 
-framestyle=:default, color=:black, size=(900,200))
-plot!(bs, 1 ./ mec, color=:teal, line=:steppost)
-hline!([1/mean(mec)], color=:teal, ls=:dash)
-plot!(range(xspan..., 1000), 
-    x->min(1e6, tc(x, Barriers.me(EM,x), EM.Ep, xs, rmax=s̄/4)), 
-    color=:orange,lw=2,alpha=0.8)
-plot!(range(xspan..., 1000), 
-    x->1/Barriers.me(AM, x), color=:cyan,lw=1, ylim=(-Inf,1e6))
-sticks!(twinx(), xs, EM.Ep, color=:firebrick, 
-    alpha=0.1, lw=3, xlim=xspan, framestyle=:default)
-
-xspan = (0.0, C)
-xspan = (0.0, 0.05) .+ 0.43 
-plot(x,y, yscale=:log10, xlim=xspan, ylabel="\$T\$", xlabel="map position (M)",
-    framestyle=:default, color=:gray, size=(700,180), margin=5Plots.mm)
-plot!(range(xspan..., 500), 
-    x->1/Barriers.me(AM, x), color=1, alpha=0.7, lw=1.5, ylim=(-Inf,1e6))
-plot!(range(xspan..., 500), 
-    x->1/Barriers.me(BPE, x), color=2, alpha=0.7, lw=1.5, ylim=(-Inf,1e6))
-plot!(range(xspan..., 500), 
-    x->1/Barriers.me(EM, x), color=:black, ls=:dot, lw=2, ylim=(-Inf,1e6),)
-sticks!(twinx(), xs, EM.Ep, color=:firebrick, ylabel="\$\\mathbb{E}[p]\$",
-    alpha=0.2, lw=3, xlim=xspan, framestyle=:default, ylim=(0,1))
 
 
 # simulation with decently sized mainland
@@ -469,6 +415,18 @@ xs  = ceil.(Int64, ys .* G)
 BP = Equilibrium(BPModel(m=m, s=ss, xs=ys .* C, Ne=float(NB), u=u))
 plot(range(0, C, 500), x->1/Barriers.me(BP, x), yscale=:log10)
 
+tb = map(range(0, C, 500)) do x
+    me = Barriers.me(BP, x)
+    tab = 1/me + NA
+    tb = 1/(2me + 1/NB) + 2me/(2me + 1/NB)*tab
+    tb_ = NB*(3 + 2me*NA)/(1 + 2me*NB)
+    @assert tb ≈ tb_
+    x, tab, tb
+end
+
+plot(first.(tb), getindex.(tb,2), yscale=:log10)
+plot!(first.(tb), getindex.(tb,3))
+
 R   = LinearPhysMap(C=C, G=G)
 AA  = Architecture([BiAllelic(0.0)   for _=1:L], xs, R)
 AB  = Architecture([BiAllelic(u)     for _=1:L], xs, R)
@@ -494,69 +452,11 @@ tt = map(x->1/Barriers.me(BP, x), range(0, C, nn))
 plot!(range(0, ts.L, nn), tt)
 
 
-
-
-
-# -------------------
-# Coarse model experiments. The data comes in windows, so what we need is
-# an expected mₑ in a window (this is already a non-trivial approximation,
-# substituting expected mₑ in a likelihood calculation instead of
-# integrating the likelihood over mₑ or suchlike).
-#
-# CoarseModel2
-#    X  :: Vector{Int}  # number of selected sites in window
-#    Δ  :: Vector{T}    # winsizes in Morgan
-#    R  :: Matrix{T} = winrecrates(Δ)  # between window recombination rates
-#    s  :: Vector{T}  # selection coefficient/vector of selection coefficients
-#    Ep :: Vector{T} = ones(length(X))
-#    m  :: T  # migration rate
-#    u  :: T  # mutation rate
-#    λ  :: T  # coal. rate (inverse pop size)
-
-
-C  = 0.25 
-nwin = 200
-ws = range(0, C, nwin+1)
-Δ  = step(ws)
-Δs = fill(Δ, nwin)
-xs = ys .* C
-Xs = fit(Histogram, xs, 0:Δ:C).weights
-sw = fit(Histogram, xs, weights(ss), 0:Δ:C).weights  ./ Xs
-sw[isnan.(sw)] .= 0.0
-
-CM = Barriers.CoarseModel2(X=Xs, Δ=Δs, s=sw, m=m, u=u, λ=1/NB)
-gs, CM_ = Barriers.gff(CM)
-plot(ws[2:end], 1 ./ (m .* gs), yscale=:log10)
-R = Fwd.rec_matrix(xs)
-A = Barriers.Architecture(loci, xs, R)
-M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
-EM = Barriers.Equilibrium(M);
-AM = AeschbacherModel(m, ss, xs)
-BP = Equilibrium(BPModel(m, ss, xs, NB, u))
-plot(range(0, C, 500),  x->1/Barriers.me(EM, x), yscale=:log10, label="ZSF24")
-plot!(range(0, C, 500), x->1/Barriers.me(AM, x), label="AB14")
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-
-BP = Equilibrium(BPModel(m, ss, xs, NB, u))
-plot(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP", yscale=:log10)
-BP = Equilibrium(BPModel(m, ss, xs, NB, u, n=1))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-BP = Equilibrium(BPModel(m, ss, xs, NB, u, n=2))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-BP = Equilibrium(BPModel(m, ss, xs, NB, u, n=4))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-BP = Equilibrium(BPModel(m, ss, xs, NB, u, n=8))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-BP = Equilibrium(BPModel(m, ss, xs, NB, u, n=16))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-BP = Equilibrium(BPModel(m, ss, xs, NB, u, n=32))
-plot!(range(0, C, 500), x->1/Barriers.me(BP, x), label="BP")
-
-
-# Swamping etc.
-rng = Random.seed!(155)
-Ls  = 0.1
-L   = 25
+# Within pop coalescence times
+# ==========================================================================
+rng = Random.seed!(135)
+Ls  = 0.25
+L   = 50
 s̄   = Ls/L
 dfe = Exponential(s̄)
 ss  = rand(rng, dfe, L)
@@ -564,31 +464,169 @@ ss .*= s̄/mean(ss)
 α   = 2.0
 zs  = [0.0 ; cumsum(rand(rng, Dirichlet(L, α)))] 
 ys  = [(zs[i] + zs[i+1])/2 for i=1:L]
-C   = 0.10
-xs  = ys .* C
 u    = s̄/200
 NA   = 1
 Ns   = 5. 
 NB   = ceil(Int64, Ns/s̄)
-loci = [Barriers.DiploidLocus(2ss[i], 0.5, u) for i=1:L]
-title = @sprintf "\$L=%d, L\\bar{s}=%.2f, N_e\\bar{s}=%.f, m/\\bar{s}=%.2f\$" L Ls Ns m/s̄
+ms   = 1.0
+m    = ms*s̄
+C    = 0.25
+xs   = ys .* C
+BP   = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=float(NB), u=u), α=0.2)
+xx, yy, y1, y2 = Tsw[1][1]
 
-mss = range(0.05, 2.0, 40)
-pps = map(mss) do ms
-    m = ms*s̄
-    R = Fwd.rec_matrix(xs)
-    A = Barriers.Architecture(loci, xs, R)
-    M = Barriers.MainlandIslandModel(arch=A, m=m, N=NB, mode=1)
-    EM = Barriers.Equilibrium(M);
-    BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=float(NB), u=u))
-    EM.Ep, BP.Ep
+plot(xx, yy, ribbon=(y1,y2), color=:lightgray, size=(700,200), yscale=:log10)
+
+fs, ws = Barriers.bc_fitnesses(BP, 50)
+kmax = findfirst(k->1 - ws[k] < 1/NB, 1:length(ws))
+chi = Barriers.bc_ancestries(BP, kmax) |> sum
+
+Barriers.bc_ancestries(BP, 50) |> cumsum |> plot
+plot!(twinx(), ws, color=2)
+
+_tab(m) = 1/m + NA
+_tw(NA, NB, m) = NB*(3+2m*NA)/(1+2m*NB)
+pred = map(range(0, C, 500)) do x
+    me = Barriers.me(BP, x)
+    tb0 = _tw(NA, NB, me)
+    tb1 = (1-2chi)*_tw(NA,NB,me) + 2chi*_tab(me) 
+    x, tb0, tb1
 end
-P1 = hcat(first.(pps)...)
-P2 = hcat(last.(pps)...)
+plot(xx, yy, ribbon=(y1,y2), color=:lightgray, size=(700,200), label="", yscale=:log10)
+plot!(getindex.(pred, Ref([1,2])), label="\$T_B(m_e)\$")
+plot!(getindex.(pred, Ref([1,3])), label="veller")
 
-map(1:L) do k
-    plot(mss, P1[k,:])
-    plot!(mss, P2[k,:])
-end |> x->plot(x..., layout=(5, L÷5), size=(160L÷5, 5*140))
 
+
+# BP approach
+# -----------
+function chi2(m, r1, r2, sp1, sp2)
+    m*(-r1*r2 + (sp1 + r1 + r2)*(sp2 + r1 + r2))/((sp1 + r1)*(sp2 + r2)*(sp1 + sp2 + r1 + r2))
+end
+
+_tab(m) = 1/m + NA
+_tw(NA, NB, m) = NB*(3+2m*NA)/(1+2m*NB)
+pred = map(range(0, C, 500)) do x
+    me = Barriers.me(BP, x)
+    r = Fwd.recrate(minimum(abs.(BP.model.xs .- x)))
+    xx1 = me/r
+    li = findlast(i->xs[i] <= x, 1:length(xs))
+    xx = if isnothing(li)
+        r = Fwd.recrate(xs[1] - x)
+        me/r
+    elseif li == length(xs)
+        r = Fwd.recrate(x - xs[end])
+        me/r
+    else
+        ri = li + 1
+        rl = Fwd.recrate(x - xs[li])
+        rr = Fwd.recrate(xs[ri] - x)
+        xx = chi2(m, rl, rr, ss[li]*BP.Ep[li], ss[ri]*BP.Ep[ri])
+        xx
+        me*(rr + rl)/(rr*rl)
+        #me/(√(rr*rl))
+    end
+    x, xx1, xx, (1-2xx)*_tw(NA,NB,me) + 2xx*_tab(me) , _tw(NA,NB,me)
+end
+
+plot(xx, yy, ribbon=(y1,y2), color=:lightgray, size=(700,200), yscale=:log10)
+plot!(getindex.(pred, Ref([1,4])))
+plot!(getindex.(pred, Ref([1,5])))
+
+function rho(BP, kmax=floor(Int, log2(0.5/BP.model.m)))
+    # heuristic for kmax: at most 50% non-residents
+    @unpack m, s, xs = BP.model
+    ws = map(0:kmax-1) do k
+        exp(-sum([s[i]*BP.Ep[i] for i=1:length(xs)])/2^k)
+    end 
+#    fs = m*cumprod(ws)
+    # fs = [m*W₀, m*W₀*W₁, ...]
+    # i.e. [F1s,  BC1    , ...]
+    fs = m*cumprod(2 .* ws)
+#    return fs, ws
+    # fs = [2m*W₀, 4m*W₀*W₁, ...]
+    # i.e. [F1s,  BC1    , ...]
+    # when we sample, there are never pure migrants around: we sample after
+    # a migration + reproduction cycle. All migrants mate with residents to
+    # make F1s.
+    # The total probability to sample a lineage that traces back to a
+    # migrant in the recent past ≈ (1/2)*fs[1] + (1/4)*fs[2] + ...
+    sum([1/2^k * fs[k] for k=1:kmax])
+    # If migrants were included and
+    # fs = [M, F1, BC1, ...]
+    # then we'd have something like: 
+    # sum([1/2^k * fs[k+1] for k=0:kmax-1])
+    # I guess we could make various corrections to our estimates for the fse
+end
+
+using Interpolations
+xs_ = [0 ; xs ; C]
+ys_ = [BP.Ep[1]; BP.Ep; BP.Ep[end]]
+itp = linear_interpolation(xs_, ys_)
+plot(range(0,C,500), x->itp(x))
+
+tw(NA, NB, m) = NB*(3+2m*NA)/(1+2m*NB)
+ρ = rho(BP, 5)
+tb = map(range(0,C,500)) do x
+    m = BP.model.m
+    me = Barriers.me(BP, x)
+    g = me/m
+    q = 1-itp(x)
+    tab = 1/me + NA
+    tb = tw(NA, NB, me)
+    x, (1-ρ)^2*tb + 2ρ*(1-ρ)*tab + ρ^2*NA, (1-2q)*tb + 2q*tab, tb
+end
+plot(xx, yy, ribbon=(y1,y2), color=:lightgray, size=(700,200))
+plot!(getindex.(tb, Ref([1,2])), yscale=:log10, lw=2)
+#plot!(getindex.(tb, Ref([1,3])), yscale=:log10, lw=2)
+plot!(getindex.(tb, Ref([1,4])), yscale=:log10, lw=2)
+
+plot!(first.(tb), x->1/Barriers.me(BP,x))
+
+# Fit a model
+using Optim
+function objective(xs, ts, BP, NA, NB, trans=log)
+    mes = map(x->Barriers.me(BP, x), xs)
+    tab = 1 ./ mes .+ NA
+    tb  = NB .* (3 .+ mes .* 2NA) ./ (1 .+ mes .* 2NB)
+    return function obj(α)
+        tpred = tab*α + (1-α)*tb
+        tpred, sum((trans.(ts) .- trans.(tpred)) .^ 2)
+    end
+end
+
+ps = map(1:2) do j
+    ms = [1, 1.5][j]
+    map(1:3) do k
+        C = [0.25,0.5,1.0][k]
+        xx, yy, y1, y2 = Tsw[j][k]
+        m = ms*s̄
+        xs = ys .* C
+        BP = Equilibrium(BPModel(m=m, s=ss, xs=xs, Ne=float(NB), u=u), α=0.2)
+        itp = linear_interpolation([0; xx; C], [yy[1] ; yy; yy[end]]) 
+        n = 500
+        xk = range(0,C,n)
+        tt = [itp(x) for x in xk]
+        f1 = objective(range(0, C, 500), tt, BP, NA, NB, x->1/x)
+        result = Optim.optimize(x->f1(x)[2], 0, 1)
+        α1 = result.minimizer
+        plot(xx, yy, ribbon=(y1,y2), color=:lightgray, size=(700,200),
+            label="")
+#        plot!(xk, tt)
+        g = mean(1 ./ (f1.tab .- NA)) /m
+        ρ = rho(BP)
+        plot!(xk, f1(α1)[1], yscale=:log10, 
+            label=@sprintf("\$\\alpha = %.3f\$", α1),
+            title=@sprintf("\$C=%.2f, m/s=%.2f\$", C, ms))
+        tb = map(range(0,C,500)) do x
+            me = Barriers.me(BP, x)
+            tab = 1/me + NA
+            tb = tw(NA, NB, me)
+            x, (1-ρ)^2*tb + 2ρ*(1-ρ)*tab + ρ^2*NA, tb
+        end
+        plot!(getindex.(tb, Ref([1,2])), label=@sprintf("\$\\rho=%.3f\$", ρ))
+        plot!(getindex.(tb, Ref([1,3])), label="\$m_e\$")
+    end |> x->plot(x..., layout=(3,1), legend=:topright)
+end 
+plot(ps..., layout=(1,2), size=(900,600))
 

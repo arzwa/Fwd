@@ -199,12 +199,12 @@ plot(Ps..., size=(620,380),
 
 
 
-res = pmap(1:10) do _
+res = map(1:10) do _
     NB  = 500
     s   = 10/NB
     u   = s/1000
-    m   = s*0.5
-    r   = s*0.1
+    m   = s*0.2
+    r   = s/2
     d   = Fwd.distance(r)
     C   = 5d
     xs  = [C/2-d/2, C/2+d/2]
@@ -226,6 +226,54 @@ res = pmap(1:10) do _
     mpop, ts, qs = simulate!(
         mpop, init_ts(mpop), ngen, x->twolocus_cb(x.popB, 1, 2))
 end
+
+tss = map(getindex.(res, 2)) do ts
+    TS.diffdiv(TS._add_grand_ancestor(ts))
+end
+xx, tbs = TS.summarize_wins(getindex.(tss, Ref([1,3])))
+tb = mean(tbs, dims=1) |> vec
+
+BP = Equilibrium(BPModel(m=m, s=[s,s], u=u, Ne=float(NB), xs=xs))
+_tab(m) = 1/m + NA
+_tw(NA, NB, m) = NB*(3+2m*NA)/(1+2m*NB)
+
+plot(xx, tb, yscale=:log10)
+pred = map(range(0, C, 500)) do x
+    r_1 = Fwd.recrate(abs(xs[1] - x))
+    r_2 = Fwd.recrate(abs(xs[2] - x))
+    p_1 = BP.Ep[1]; p_2 = BP.Ep[2]
+    s_1 = s_2 = s
+ #   xx = m*(p_1*s_1 + r_2)/(p_1^2*s_1^2 + p_1*p_2*s_1*s_2 + p_1*r_1*s_1 + p_1*r_2*s_1 + p_2*r_1*s_2 + r_1*r_2)
+    me = Barriers.me(BP, x)
+    xx = if x < xs[1]
+        me/r_1
+    elseif x > xs[2]
+        me/r_2    
+    else
+        #me*(r_1 + r_2)/(r_1*r_2)
+        me/(s_1*p_1 + s_2*p_2 + r_1 + r_2) +
+            me*(p_1*s_1 + r_1 + r_2)*(p_2*s_2 + r_1 + r_2)/(r_1*r_2*(s_1*p_1 + s_2*p_2 + r_1 + r_2))
+    end
+    yy = me/min(r_1, r_2)
+    zz = me/(1/(1/r_1 + 1/r_2)) 
+    #@info _xx, xx
+    tw1 = (1-2xx)*_tw(NA,NB,me) + 2xx*_tab(me)
+    tw2 = (1-2xx)*_tw(NA,NB*(1-xx),me) + 2xx*_tab(me)
+    tw3 = _tw(NA,NB*(1-xx),me)
+    tw4 = _tw(NA,NB,me)
+    tw5 = (1-2yy)*_tw(NA,NB,me) + 2yy*_tab(me)
+    tw6 = (1-2zz)*_tw(NA,NB,me) + 2zz*_tab(me)
+    x, xx, tw1, tw2, tw3, tw4, tw5, tw6
+end
+plot!(getindex.(pred, Ref([1,3])), lw=2)
+plot!(getindex.(pred, Ref([1,5])), lw=2)
+plot!(getindex.(pred, Ref([1,7])), lw=2)
+plot!(getindex.(pred, Ref([1,8])), lw=2)
+#plot!(getindex.(pred, Ref([1,3])), lw=2)
+
+plot(getindex.(pred, Ref([1,2])), lw=2)
+
+
     
 mpop = Fwd.TwoPopOneWay(m, deepcopy(popA), deepcopy(popB))
 mpop, qs = simulate!(mpop, 500_000, x->twolocus_cb(x.popB, 1, 2))

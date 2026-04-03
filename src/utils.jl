@@ -120,16 +120,26 @@ end
 
 Calculate harmonic mean recombination rate given a bunch of map positions.
 """
-function hmrecrate(xs)
-    rs  = Fwd.rec_matrix(xs)
+function hmrecrate(rs::Matrix)
     rhm = 0.0
-    L = length(xs)
+    L = size(rs,1)
     for i=2:L
         for j=1:i-1
             rhm += 1/rs[i,j]
         end
     end
     (L*(L-1)/2)/rhm
+end
+
+function rbar(rs::Matrix)
+    r̄ = 0.0
+    L = size(rs,1)
+    for i=2:L
+        for j=1:i-1
+            r̄ += rs[i,j]
+        end
+    end
+    r̄/(L*(L-1)/2)
 end
 
 function estimate_coaltimes(tss, ci=0.95, pa=0., pb=0.; idx=4)

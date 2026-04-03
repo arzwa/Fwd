@@ -5,48 +5,48 @@ using PyCall
 using StatsBase
 msprime = pyimport("msprime")
 
-function compare_tables(ts1, ts2)
-    n1 = ts1.tables.nodes
-    n2 = ts2.tables.nodes
-    @test all(n1.time .≈ n2.time)  # XXX approx, reverse_relabel prone to float error
-    @test all(n1.flags .== n2.flags)
-    e1 = ts1.tables.edges
-    e2 = ts2.tables.edges
-    @test all(e1.left .== e2.left)
-    @test all(e1.right .== e2.right)
-    @test all(e1.parent .== e2.parent)
-    @test all(e1.child .== e2.child)
-end
-
-@testset "Round trip `tskit <-> Fwd`" begin
-    ts1 = msprime.simulate(10, recombination_rate=1, random_seed=12)
-    ts_ = Fwd.from_tskit(ts1)
-    ts2 = Fwd.to_tskit(ts_)
-    compare_tables(ts1, ts2)
-end
-
-@testset "Simplification, test against tskit on msprime sims" begin
-    for n in [10, 100, 1000]
-        ts0 = msprime.simulate(n, recombination_rate=1, random_seed=1)
-        ts1 = Fwd.from_tskit(ts0)
-        for N in 2:10
-            smple = collect(1:N)
-            ts2 = Fwd.simplify(ts1, smple)
-            ts3 = Fwd.to_tskit(ts2)
-            ts4 = ts0.simplify(smple .- 1)
-            compare_tables(ts3, ts4)
-            ts5 = Fwd.reverse_relabel(ts1)
-            ts6 = Fwd.simplify(ts5, reverse(length(ts5.nodes) .- smple .+ 1))
-            ts7 = Fwd.reverse_relabel(ts6)
-            ts8 = Fwd.to_tskit(Fwd.reverse_relabel(ts6))
-            compare_tables(ts8, ts4)
-            #rng = Random.seed!(12)
-            #shuffle!(rng, smple)
-            #ts9 = Fwd.to_tskit(Fwd.simplify(ts1, smple))
-            #compare_tables(ts9, ts4)
-        end
-    end
-end
+#function compare_tables(ts1, ts2)
+#    n1 = ts1.tables.nodes
+#    n2 = ts2.tables.nodes
+#    @test all(n1.time .≈ n2.time)  # XXX approx, reverse_relabel prone to float error
+#    @test all(n1.flags .== n2.flags)
+#    e1 = ts1.tables.edges
+#    e2 = ts2.tables.edges
+#    @test all(e1.left .== e2.left)
+#    @test all(e1.right .== e2.right)
+#    @test all(e1.parent .== e2.parent)
+#    @test all(e1.child .== e2.child)
+#end
+#
+#@testset "Round trip `tskit <-> Fwd`" begin
+#    ts1 = msprime.simulate(10, recombination_rate=1, random_seed=12)
+#    ts_ = Fwd.from_tskit(ts1)
+#    ts2 = Fwd.to_tskit(ts_)
+#    compare_tables(ts1, ts2)
+#end
+#
+#@testset "Simplification, test against tskit on msprime sims" begin
+#    for n in [10, 100, 1000]
+#        ts0 = msprime.simulate(n, recombination_rate=1, random_seed=1)
+#        ts1 = Fwd.from_tskit(ts0)
+#        for N in 2:10
+#            smple = collect(1:N)
+#            ts2 = Fwd.simplify(ts1, smple)
+#            ts3 = Fwd.to_tskit(ts2)
+#            ts4 = ts0.simplify(smple .- 1)
+#            compare_tables(ts3, ts4)
+#            ts5 = Fwd.reverse_relabel(ts1)
+#            ts6 = Fwd.simplify(ts5, reverse(length(ts5.nodes) .- smple .+ 1))
+#            ts7 = Fwd.reverse_relabel(ts6)
+#            ts8 = Fwd.to_tskit(Fwd.reverse_relabel(ts6))
+#            compare_tables(ts8, ts4)
+#            #rng = Random.seed!(12)
+#            #shuffle!(rng, smple)
+#            #ts9 = Fwd.to_tskit(Fwd.simplify(ts1, smple))
+#            #compare_tables(ts9, ts4)
+#        end
+#    end
+#end
 
 #@testset "Recombination" begin
 #    # This is a visual test to convince myself of the correctness

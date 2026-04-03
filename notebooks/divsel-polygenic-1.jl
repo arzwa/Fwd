@@ -16,7 +16,6 @@ AA  = Architecture([BiAllelic(0.0) for _=1:L], xs, R)
 AB  = Architecture([BiAllelic(u) for _=1:L], xs, R)
 MA  = GPMap([HaploidLocus(0.0, i) for i=1:L])
 MB  = GPMap([HaploidLocus(-s, i) for i=1:L])
-R   = LinearMap(C)
 NA  = 1
 NB  = ceil(Int, Ns/s)
 nA  = collect(1:NA)

@@ -8,6 +8,7 @@ _ploidy(_::Diploid) = 2
 
 abstract type AbstractPop end
 generation!(pop::AbstractPop) = generation!(Random.default_rng(), pop)
+generation!(pop::AbstractPop, ts::TreeSequence) = generation!(Random.default_rng(), pop, ts)
 
 """
     WFPopulation

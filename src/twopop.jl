@@ -35,6 +35,7 @@ function migration!(rng, metapop::TwoPopOneWay)
     for k=1:nmig
         migrate_copy!(popA, popB, idx[k], k)
     end
+    return nmig
 end
 # Other possibilities for migration:
 # 1. as in SLiM, a proportion m of the offspring is replaced by offspring
@@ -42,7 +43,7 @@ end
 # 2. ...
 
 function generation!(rng, metapop::TwoPopOneWay, ts::TreeSequence)
-    migration!(rng, metapop)
+    nmig = migration!(rng, metapop)
     @unpack popA, popB = metapop
     popA_ = generation!(rng, popA, ts, popid=1)
     popB_ = generation!(rng, popB, ts, popid=2)

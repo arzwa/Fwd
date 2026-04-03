@@ -1,0 +1,5 @@
+[deps]
+BarriersBP = "62d6613b-2872-4db1-bb8d-914d5e558e35"
+Fwd = "12d7096c-2637-4d3e-9e8f-4c419b333460"
+MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
+TreeSequences = "a9c1f73b-4c13-47b7-b5be-16be85851538"

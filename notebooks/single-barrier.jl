@@ -1,4 +1,5 @@
 using Random, Fwd, ProgressMeter, StatsBase, WrightDistribution
+import TreeSequences as TS
 using Plots, Serialization; plotsdefault()
 
 NB  = 500
@@ -23,15 +24,22 @@ popB = WFPopulation(ploidy=Haploid(), N=NB, arch=AB, gpm=MB, x=xB, nodes=nB)
 mpop = Fwd.TwoPopOneWay(m, popA, popB)
 ngen = 50NB
 
+# Single example
+_, ts, qs = simulate!(rng, deepcopy(mpop), init_ts(mpop), ngen, x->mean(x.popB.x)[1])
+
+stephist(vec(qs), norm=true, bins=0:0.02:1)
+plot!(x->pdf(Wright(-2NB*s, NB*u, NB*(u + m), 0.5), 1-x))  
+
+x, ta, tb, tab = TS.diffdiv(ts)
+plot(x, tab)
+
+# bunch of replicates
 rng = Random.seed!(22)
 nrep = 100
 res = map(1:nrep) do _
     pop, ts, qs = simulate!(rng, 
         deepcopy(mpop), init_ts(mpop), ngen, x->mean(x.popB.x)[1])
 end
-
-stephist(vec(res[1][3]), norm=true, bins=0:0.02:1)
-plot!(x->pdf(Wright(-2NB*s, NB*u, NB*(u + m), 0.5), 1-x))  
 
 tabs = map(res) do (_,ts,_)
     x, ta, tb, tab = Fwd.diffdiv(ts)
@@ -41,6 +49,7 @@ end
 tabs = deserialize("data/tabs-2025-11-24.jls")
 
 q = m/s
+p = 1-q
 tb_sc(m, q, r) = 1 - 1/r + 1/(q*r) + 1/m
 
 x, tab = Fwd.summarize_wins(first.(tabs), last.(tabs))
@@ -51,8 +60,27 @@ plot!(range(extrema(x)..., 200), z->(fr(z) + s)/(m*fr(z)), yscale=:log10, color=
 plot!(range(extrema(x)..., 200), z->tb_sc(m, q, fr(z)), yscale=:log10, color=:black, ls=:dash)
 hline!([ngen])
 
+mₑ(m, r, s) = m*r/(r+s)
+tw(NA, NB, m) = NB*(3+2m*NA)/(1+2m*NB)
 x, tb = Fwd.summarize_wins(first.(tabs), getindex.(tabs,3))
-plot(x, vec(mean(tb, dims=1)), color=:lightgray)
+plot(x, vec(mean(tb, dims=1)), color=:lightgray, legend=:topright, label="")
+plot!(range(extrema(x)..., 200), label="\$t_B(m_e)\$",
+    x->tw(NA, NB, mₑ(m, fr(x), s*p)))
+plot!(range(extrema(x)..., 200), label="hack",
+    x->(1-2q)*tw(NA, NB, mₑ(m, fr(x), s*p)) + 2q*(1/mₑ(m, fr(x), s*p) + NA))
+plot!(range(extrema(x)..., 200), label="new",
+    x->tw2(NA, NB, m, s, fr(x), 1-m/s), yscale=:log10)
+
+function tw2(NA, NB, m, s, r, p)
+    me = mₑ(m, r, s*p)
+    _tab = 1/me + NA
+    _tb = tw(NA, NB, me)
+    x = r + s*p
+    2m/x^2 + 2m/x * _tab + (x-2m)/x * _tb
+end
+
+plot(range(extrema(x)..., 200), x->m/(s*(1-q) + fr(x)))
+
 plot!(range(extrema(x)..., 200), z->tw_sc2(m, q, fr(z), NB), color=:black, ls=:dash)
 plot!(range(extrema(x)..., 200), z->tw_sc3(m, q, fr(z), NB), color=:red, ls=:dash)
 plot!(ylim=(0,ngen))

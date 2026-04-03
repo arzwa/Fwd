@@ -54,3 +54,7 @@ function mutation!(rng, locus::IntAllelic, X, N, i)
     end
 end
 
+# For an architecture object
+rec_matrix(A::Architecture) = rec_matrix(A.recmap, A.xs)
+
+
